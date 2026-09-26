@@ -1,52 +1,59 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Room, Booking } from '../lib/types';
-import { X, CheckCircle2, ShieldCheck, Calendar, User, Mail, CreditCard, Sparkles, Building, Zap } from 'lucide-react';
+import { Room, Booking, StayDates } from '../lib/types';
+import { BookingRequest } from '../lib/store';
+import { EARLY_CHECKIN_FEE, quote } from '../lib/booking-rules';
+import { formatPropertyTime } from '../lib/time';
+import { X, CheckCircle2, ShieldCheck, Calendar, User, Mail, CreditCard, Sparkles, Building, Zap, Loader2, AlertTriangle } from 'lucide-react';
 
 interface BookingModalProps {
   room: Room | null;
+  stay: StayDates;
   isOpen: boolean;
   onClose: () => void;
-  onConfirmBooking: (
-    roomId: string,
-    guestName: string,
-    guestEmail: string,
-    checkInDate: string,
-    checkOutDate: string,
-    isEarlyCheckIn: boolean
-  ) => Booking | null;
+  onConfirmBooking: (req: BookingRequest) => Promise<Booking>;
 }
+
+const formatDate = (d: string) =>
+  new Date(`${d}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 export const BookingModal: React.FC<BookingModalProps> = ({
   room,
+  stay,
   isOpen,
   onClose,
   onConfirmBooking,
 }) => {
+  // Prefilled so reviewers can click straight through the demo.
   const [guestName, setGuestName] = useState('Ananya Sharma');
   const [guestEmail, setGuestEmail] = useState('ananya.sharma@example.com');
-  const [checkInDate, setCheckInDate] = useState('2026-09-27');
-  const [checkOutDate, setCheckOutDate] = useState('2026-09-29');
   const [isEarlyCheckIn, setIsEarlyCheckIn] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen || !room) return null;
 
-  const earlyCheckInFee = 1000;
-  const grandTotal = room.pricePerNight + (isEarlyCheckIn ? earlyCheckInFee : 0);
+  const { nights, totalPrice: grandTotal } = quote(room.pricePerNight, stay.checkIn, stay.checkOut, isEarlyCheckIn);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = onConfirmBooking(room.id, guestName, guestEmail, checkInDate, checkOutDate, isEarlyCheckIn);
-    if (result) {
-      setConfirmedBooking(result);
+    setSubmitting(true);
+    setError(null);
+    try {
+      setConfirmedBooking(await onConfirmBooking({ roomId: room.id, guestName, guestEmail, isEarlyCheckIn }));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDone = () => {
     setConfirmedBooking(null);
     setIsEarlyCheckIn(false);
+    setError(null);
     onClose();
   };
 
@@ -105,9 +112,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <span className="font-semibold text-slate-200">{confirmedBooking.guestName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Scheduled Check-In:</span>
+                  <span className="text-slate-400">Stay:</span>
                   <span className="font-semibold text-slate-200">
-                    {confirmedBooking.checkInDate} at <strong>{confirmedBooking.scheduledCheckInTime}</strong>
+                    {formatDate(confirmedBooking.checkInDate)} → {formatDate(confirmedBooking.checkOutDate)} ({confirmedBooking.nights} night{confirmedBooking.nights === 1 ? '' : 's'})
                   </span>
                 </div>
                 {confirmedBooking.isEarlyCheckIn && (
@@ -116,11 +123,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       <Zap className="w-3.5 h-3.5" />
                       <span>Early Check-In Add-On:</span>
                     </span>
-                    <span>+₹{confirmedBooking.earlyCheckInFee.toLocaleString('en-IN')} (12:00 PM)</span>
+                    <span>+₹{confirmedBooking.earlyCheckInFee.toLocaleString('en-IN')} (room ready by 12:00 PM)</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-slate-800 pt-2">
-                  <span className="text-slate-400">Total Price Paid:</span>
+                  <span className="text-slate-400">Total (pay at hotel):</span>
                   <span className="font-extrabold text-emerald-400 text-sm">
                     ₹{confirmedBooking.totalPrice.toLocaleString('en-IN')}
                   </span>
@@ -130,7 +137,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div className="bg-sky-950/40 border border-sky-500/30 p-3 rounded-xl text-left text-xs text-sky-300 flex items-start space-x-2">
                 <Sparkles className="w-4 h-4 text-sky-400 mt-0.5 shrink-0" />
                 <span>
-                  <strong>Operational Dispatch:</strong> Room {room.roomNumber} has been pushed to the housekeeping queue with {confirmedBooking.isEarlyCheckIn ? 'URGENT priority' : 'high priority'} and automated SMS sent to staff.
+                  <strong>What happens next:</strong> housekeeping now sees Room {room.roomNumber} with your expected arrival ({formatPropertyTime(confirmedBooking.arrivalAt)} on {formatDate(confirmedBooking.checkInDate)}), and it is prioritized by how little time is left to prepare it.
                 </span>
               </div>
 
@@ -153,7 +160,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-slate-400">Base Nightly Rate</div>
+                  <div className="text-xs text-slate-400">Per night</div>
                   <div className="text-lg font-extrabold text-emerald-400">
                     ₹{room.pricePerNight.toLocaleString('en-IN')}
                   </div>
@@ -168,11 +175,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <span className="text-xs font-bold text-white">Add VIP Early Check-In (12:00 PM)</span>
                   </div>
                   <span className="text-xs font-extrabold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                    +₹1,000
+                    +₹{EARLY_CHECKIN_FEE.toLocaleString('en-IN')}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300">
-                  Guarantees room readiness at 12:00 PM instead of standard 2:00 PM. Automatically dispatches URGENT housekeeping priority.
+                  Room ready at 12:00 PM instead of the standard 2:00 PM. Housekeeping sees the earlier arrival, which moves this room up their queue.
                 </p>
                 <div className="flex items-center space-x-2 pt-1">
                   <input
@@ -183,7 +190,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     className="w-4 h-4 rounded border-amber-500 bg-slate-950 text-amber-500 focus:ring-amber-500"
                   />
                   <label htmlFor="earlyCheckIn" className="text-xs font-bold text-amber-300 cursor-pointer">
-                    Enable Early Check-In for ₹1,000 extra
+                    Add early check-in
                   </label>
                 </div>
               </div>
@@ -218,40 +225,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
-                      <Calendar className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Check-In Date</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={checkInDate}
-                      onChange={e => setCheckInDate(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
-                      <Calendar className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Check-Out Date</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={checkOutDate}
-                      onChange={e => setCheckOutDate(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-300 flex items-center space-x-2">
+                  <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                  <span>
+                    {formatDate(stay.checkIn)} → {formatDate(stay.checkOut)} · {nights} night{nights === 1 ? '' : 's'}
+                  </span>
+                  <span className="text-slate-500">(change dates above the floor plan)</span>
                 </div>
               </div>
 
               {/* Total Summary */}
               <div className="flex items-center justify-between bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs">
-                <span className="text-slate-400 font-semibold">Total Checkout Amount:</span>
+                <span className="text-slate-400 font-semibold">
+                  ₹{room.pricePerNight.toLocaleString('en-IN')} × {nights} night{nights === 1 ? '' : 's'}
+                  {isEarlyCheckIn ? ` + ₹${EARLY_CHECKIN_FEE.toLocaleString('en-IN')} early check-in` : ''}
+                </span>
                 <span className="text-lg font-black text-emerald-400">
                   ₹{grandTotal.toLocaleString('en-IN')}
                 </span>
@@ -260,15 +248,30 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               {/* Lock-in Guarantee Notice */}
               <div className="flex items-center space-x-2 text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Guarantee: You will receive Room {room.roomNumber} upon check-in ({isEarlyCheckIn ? '12:00 PM' : '2:00 PM'}).</span>
+                <span>You get Room {room.roomNumber} specifically — not &quot;a {room.category}&quot;. Ready from {isEarlyCheckIn ? '12:00 PM' : '2:00 PM'}.</span>
               </div>
+
+              {room.isBooked && (
+                <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2 flex items-center space-x-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>Room {room.roomNumber} is already booked for at least one of these nights. Try other dates or compare similar rooms.</span>
+                </p>
+              )}
+
+              {error && (
+                <p role="alert" className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 flex items-center space-x-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </p>
+              )}
 
               <button
                 type="submit"
-                className="w-full py-3.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-sky-500/20 transition-all flex items-center justify-center space-x-2"
+                disabled={submitting || room.isBooked}
+                className="w-full py-3.5 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-sky-500/20 transition-all flex items-center justify-center space-x-2"
               >
-                <CreditCard className="w-4 h-4" />
-                <span>Confirm & Reserve Room {room.roomNumber} (₹{grandTotal.toLocaleString('en-IN')})</span>
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                <span>Reserve Room {room.roomNumber} (₹{grandTotal.toLocaleString('en-IN')})</span>
               </button>
             </form>
           )}

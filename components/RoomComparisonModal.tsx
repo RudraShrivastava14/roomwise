@@ -188,7 +188,7 @@ export const RoomComparisonModal: React.FC<RoomComparisonModalProps> = ({
                           : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-sky-500/20'
                       }`}
                     >
-                      <span>{room.isBooked ? 'Currently Reserved' : `Reserve Room ${room.roomNumber}`}</span>
+                      <span>{room.isBooked ? 'Booked for your dates' : `Reserve Room ${room.roomNumber}`}</span>
                       {!room.isBooked && <ArrowRight className="w-3.5 h-3.5 ml-1" />}
                     </button>
                   </td>

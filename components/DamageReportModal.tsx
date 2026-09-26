@@ -8,7 +8,7 @@ interface DamageReportModalProps {
   task: HousekeepingTask | null;
   isOpen: boolean;
   onClose: () => void;
-  onSubmitReport: (taskId: string, item: string, description: string, severity: 'MINOR' | 'MAJOR') => void;
+  onSubmitReport: (taskId: string, item: string, description: string, severity: 'MINOR' | 'MAJOR') => Promise<void>;
 }
 
 export const DamageReportModal: React.FC<DamageReportModalProps> = ({
@@ -20,13 +20,23 @@ export const DamageReportModal: React.FC<DamageReportModalProps> = ({
   const [item, setItem] = useState('Bathtub Faucet / Towels');
   const [description, setDescription] = useState('Deep stain on bath towels and leaking faucet handle.');
   const [severity, setSeverity] = useState<'MINOR' | 'MAJOR'>('MINOR');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen || !task) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmitReport(task.id, item, description, severity);
-    onClose();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmitReport(task.id, item, description, severity);
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -103,9 +113,16 @@ export const DamageReportModal: React.FC<DamageReportModalProps> = ({
             </div>
           </div>
 
+          {error && (
+            <p role="alert" className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+              {error}
+            </p>
+          )}
+
           <button
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center space-x-2"
+            disabled={submitting}
+            className="w-full py-3 disabled:opacity-60 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center space-x-2"
           >
             <Send className="w-4 h-4" />
             <span>Submit Maintenance Flag</span>

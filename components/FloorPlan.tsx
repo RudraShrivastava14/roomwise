@@ -120,7 +120,11 @@ export const FloorPlan: React.FC<FloorPlanProps> = ({
                 {/* Room Blueprint Visual Icon Box */}
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
                   <div className="text-[11px] font-mono text-slate-400">
-                    Status: <span className="text-slate-200 font-semibold">{room.status}</span>
+                    {room.isBooked ? (
+                      <span className="text-amber-300 font-semibold">Booked for your dates</span>
+                    ) : (
+                      <span className="text-emerald-300 font-semibold">Available</span>
+                    )}
                   </div>
                   <button
                     onClick={(e) => {

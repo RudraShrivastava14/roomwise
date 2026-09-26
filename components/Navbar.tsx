@@ -1,14 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Building2, Sparkles, ClipboardList, RotateCcw, User, ShieldCheck, Hotel } from 'lucide-react';
+import { Sparkles, ClipboardList, User, Hotel } from 'lucide-react';
 
 interface NavbarProps {
   activeMode: 'GUEST' | 'STAFF';
   onModeChange: (mode: 'GUEST' | 'STAFF') => void;
   comparedCount: number;
   onOpenCompare: () => void;
-  onResetDemo: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -16,7 +15,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onModeChange,
   comparedCount,
   onOpenCompare,
-  onResetDemo,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-xl">
@@ -79,14 +77,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            <button
-              onClick={onResetDemo}
-              title="Reset state to initial default demo data"
-              className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Reset Demo</span>
-            </button>
           </div>
         </div>
       </div>

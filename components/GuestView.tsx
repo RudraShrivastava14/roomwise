@@ -1,13 +1,21 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Room, FilterOptions } from '../lib/types';
+import { Room, FilterOptions, StayDates } from '../lib/types';
+import { ErrorPanel } from './ErrorPanel';
+import { addDays, nightsBetween, propertyDate } from '../lib/time';
+import { MAX_STAY_NIGHTS } from '../lib/validation';
 import { RoomCard } from './RoomCard';
 import { FloorPlan } from './FloorPlan';
-import { SlidersHorizontal, LayoutGrid, Layers, Sparkles, Filter, Check, RefreshCw } from 'lucide-react';
+import { SlidersHorizontal, LayoutGrid, Layers, Sparkles, Filter, Check, RefreshCw, CalendarDays, Loader2 } from 'lucide-react';
 
 interface GuestViewProps {
   rooms: Room[];
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  stay: StayDates;
+  onStayChange: (stay: StayDates) => void;
   comparedRoomIds: string[];
   onToggleCompare: (roomId: string) => void;
   onClearCompare: () => void;
@@ -17,6 +25,11 @@ interface GuestViewProps {
 
 export const GuestView: React.FC<GuestViewProps> = ({
   rooms,
+  loading,
+  error,
+  onRetry,
+  stay,
+  onStayChange,
   comparedRoomIds,
   onToggleCompare,
   onClearCompare,
@@ -36,6 +49,8 @@ export const GuestView: React.FC<GuestViewProps> = ({
     maxPrice: 15000,
   });
 
+  const floors = useMemo(() => Array.from(new Set(rooms.map(r => r.floor))).sort((a, b) => b - a), [rooms]);
+
   const comparedRooms = useMemo(
     () => rooms.filter(r => comparedRoomIds.includes(r.id)),
     [rooms, comparedRoomIds]
@@ -52,6 +67,16 @@ export const GuestView: React.FC<GuestViewProps> = ({
       return true;
     });
   }, [rooms, filters]);
+
+  const today = propertyDate();
+  const nights = nightsBetween(stay.checkIn, stay.checkOut);
+  const availableCount = rooms.filter(r => !r.isBooked).length;
+
+  const changeCheckIn = (checkIn: string) => {
+    if (!checkIn) return;
+    const checkOut = stay.checkOut > checkIn ? stay.checkOut : addDays(checkIn, 1);
+    onStayChange({ checkIn, checkOut: nightsBetween(checkIn, checkOut) > MAX_STAY_NIGHTS ? addDays(checkIn, 1) : checkOut });
+  };
 
   const resetFilters = () => {
     setFilters({
@@ -115,6 +140,43 @@ export const GuestView: React.FC<GuestViewProps> = ({
         </div>
       </div>
 
+      {/* Stay Dates — availability is computed per night for this range */}
+      <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-lg flex flex-col sm:flex-row sm:items-end gap-4 text-xs">
+        <div className="flex items-center space-x-2 font-bold text-slate-300 uppercase tracking-wider sm:mb-2.5">
+          <CalendarDays className="w-4 h-4 text-sky-400" />
+          <span>Your stay</span>
+        </div>
+        <div>
+          <label htmlFor="stay-in" className="block text-slate-400 font-medium mb-1">Check-in</label>
+          <input
+            id="stay-in"
+            type="date"
+            min={today}
+            value={stay.checkIn}
+            onChange={e => changeCheckIn(e.target.value)}
+            className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+          />
+        </div>
+        <div>
+          <label htmlFor="stay-out" className="block text-slate-400 font-medium mb-1">Check-out</label>
+          <input
+            id="stay-out"
+            type="date"
+            min={addDays(stay.checkIn, 1)}
+            max={addDays(stay.checkIn, MAX_STAY_NIGHTS)}
+            value={stay.checkOut}
+            onChange={e => e.target.value && onStayChange({ ...stay, checkOut: e.target.value })}
+            className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+          />
+        </div>
+        <div className="text-slate-400 sm:mb-2.5 flex items-center space-x-2">
+          <span>
+            {nights} night{nights === 1 ? '' : 's'} · <strong className="text-white">{availableCount}</strong> of {rooms.length} rooms free for every night
+          </span>
+          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />}
+        </div>
+      </div>
+
       {/* Filter Control Bar */}
       <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-lg space-y-4">
         <div className="flex items-center justify-between">
@@ -147,8 +209,9 @@ export const GuestView: React.FC<GuestViewProps> = ({
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
             >
               <option value="ALL">All Floors</option>
-              <option value="4">Floor 4</option>
-              <option value="3">Floor 3</option>
+              {floors.map(f => (
+                <option key={f} value={f}>Floor {f}</option>
+              ))}
             </select>
           </div>
 
@@ -221,7 +284,20 @@ export const GuestView: React.FC<GuestViewProps> = ({
       </div>
 
       {/* Main Display: Floor Plan or Grid */}
-      {viewMode === 'FLOORPLAN' ? (
+      {error && rooms.length > 0 && <ErrorPanel message={error} onRetry={onRetry} />}
+      {error && rooms.length === 0 ? (
+        <ErrorPanel message={error} onRetry={onRetry} />
+      ) : loading && rooms.length === 0 ? (
+        <div className="flex items-center justify-center py-24 text-slate-400 text-xs space-x-2">
+          <Loader2 className="w-5 h-5 animate-spin text-sky-400" />
+          <span>Loading rooms...</span>
+        </div>
+      ) : filteredRooms.length === 0 ? (
+        <div className="text-center py-16 text-sm text-slate-400 bg-slate-900/60 border border-slate-800 rounded-2xl">
+          No rooms match these filters.{' '}
+          <button onClick={resetFilters} className="text-sky-400 hover:underline">Reset filters</button>
+        </div>
+      ) : viewMode === 'FLOORPLAN' ? (
         <FloorPlan
           rooms={filteredRooms}
           selectedFloor={selectedFloor}

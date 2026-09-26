@@ -92,7 +92,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
         <div className="absolute bottom-3 right-3">
           {room.isBooked ? (
             <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              Reserved / Dirty
+              Booked for your dates
             </span>
           ) : (
             <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -172,7 +172,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
                 : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-sky-500/20'
             }`}
           >
-            {room.isBooked ? 'Unavailable' : 'Book Room'}
+            {room.isBooked ? 'Booked for these dates' : 'Book This Room'}
           </button>
         </div>
       </div>

@@ -6,116 +6,109 @@ import { Room } from '../lib/types';
 import { Navbar } from '../components/Navbar';
 import { GuestView } from '../components/GuestView';
 import { StaffView } from '../components/StaffView';
+import { StaffLogin } from '../components/StaffLogin';
+import { ErrorPanel } from '../components/ErrorPanel';
 import { RoomComparisonModal } from '../components/RoomComparisonModal';
 import { BookingModal } from '../components/BookingModal';
-import { Hotel } from 'lucide-react';
+import { Hotel, Loader2 } from 'lucide-react';
 
 export default function Home() {
-  const {
-    isLoaded,
-    rooms,
-    tasks,
-    notifications,
-    latestToast,
-    comparedRoomIds,
-    activeMode,
-    setActiveMode,
-    toggleCompareRoom,
-    clearCompare,
-    createBooking,
-    updateTaskStatus,
-    addDamageReport,
-    exportScheduleCSV,
-    resetDemoData,
-  } = useRoomWiseStore();
-
+  const store = useRoomWiseStore();
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [selectedRoomForBooking, setSelectedRoomForBooking] = useState<Room | null>(null);
 
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
-        <div className="w-12 h-12 rounded-2xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center animate-pulse">
-          <Hotel className="w-6 h-6 text-sky-400" />
-        </div>
-        <p className="text-xs text-slate-400">Loading RoomWise Engine...</p>
-      </div>
-    );
-  }
+  const comparedRooms = store.rooms.filter(r => store.comparedRoomIds.includes(r.id));
 
-  const comparedRooms = rooms.filter(r => comparedRoomIds.includes(r.id));
+  const renderStaff = () => {
+    if (store.isStaff === null) return <Spinner label="Checking session..." />;
+    if (!store.isStaff) return <StaffLogin onLogin={store.login} />;
+    if (!store.staffData) {
+      return store.staffError ? (
+        <ErrorPanel message={store.staffError} onRetry={store.reloadStaff} />
+      ) : (
+        <Spinner label="Loading housekeeping queue..." />
+      );
+    }
+    return (
+      <StaffView
+        data={store.staffData}
+        refreshError={store.staffError}
+        latestToast={store.latestToast}
+        onUpdateStatus={store.updateTaskStatus}
+        onAddDamageReport={store.addDamageReport}
+        onExportCSV={store.exportScheduleCSV}
+        onResetDemo={store.resetDemoData}
+        onLogout={store.logout}
+      />
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
-      {/* Top Header Navigation */}
       <Navbar
-        activeMode={activeMode}
-        onModeChange={setActiveMode}
-        comparedCount={comparedRoomIds.length}
+        activeMode={store.activeMode}
+        onModeChange={store.setActiveMode}
+        comparedCount={store.comparedRoomIds.length}
         onOpenCompare={() => setIsCompareModalOpen(true)}
-        onResetDemo={resetDemoData}
       />
 
-      {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeMode === 'GUEST' ? (
+        {store.activeMode === 'GUEST' ? (
           <GuestView
-            rooms={rooms}
-            comparedRoomIds={comparedRoomIds}
-            onToggleCompare={toggleCompareRoom}
-            onClearCompare={clearCompare}
+            rooms={store.rooms}
+            loading={store.roomsLoading}
+            error={store.roomsError}
+            onRetry={store.reloadRooms}
+            stay={store.stay}
+            onStayChange={store.setStay}
+            comparedRoomIds={store.comparedRoomIds}
+            onToggleCompare={store.toggleCompareRoom}
+            onClearCompare={store.clearCompare}
             onOpenCompareModal={() => setIsCompareModalOpen(true)}
-            onSelectBook={(room) => setSelectedRoomForBooking(room)}
+            onSelectBook={room => setSelectedRoomForBooking(room)}
           />
         ) : (
-          <StaffView
-            rooms={rooms}
-            tasks={tasks}
-            notifications={notifications}
-            latestToast={latestToast}
-            onUpdateStatus={updateTaskStatus}
-            onAddDamageReport={addDamageReport}
-            onExportCSV={exportScheduleCSV}
-            onResetDemo={resetDemoData}
-          />
+          renderStaff()
         )}
       </main>
 
-      {/* Side-by-side Room Comparison Modal */}
       <RoomComparisonModal
         isOpen={isCompareModalOpen}
         onClose={() => setIsCompareModalOpen(false)}
         comparedRooms={comparedRooms}
-        onSelectBook={(room) => {
+        onSelectBook={room => {
           setIsCompareModalOpen(false);
           setSelectedRoomForBooking(room);
         }}
       />
 
-      {/* Room Reservation Checkout Modal */}
       <BookingModal
         room={selectedRoomForBooking}
+        stay={store.stay}
         isOpen={!!selectedRoomForBooking}
         onClose={() => setSelectedRoomForBooking(null)}
-        onConfirmBooking={(roomId, name, email, checkIn, checkOut, isEarlyCheckIn) =>
-          createBooking(roomId, name, email, checkIn, checkOut, isEarlyCheckIn)
-        }
+        onConfirmBooking={store.createBooking}
       />
 
-      {/* Footer */}
       <footer className="bg-slate-900 border-t border-slate-800 py-8 text-xs text-slate-400 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <Hotel className="w-4 h-4 text-sky-400" />
-            <span className="font-bold text-white">RoomWise Micro-SaaS</span>
-            <span>— Unit-Level Booking Transparency & Housekeeping Dispatch Engine</span>
+            <span className="font-bold text-white">RoomWise</span>
+            <span>— guests choose the exact room; housekeeping gets it ready in time.</span>
           </div>
-
-          <div className="flex items-center space-x-4">
-            <span className="text-slate-500">Built for Boutique Hotels & Resorts</span>
-          </div>
+          <span className="text-slate-500">Demo property: Grand Azure Resort (fictional)</span>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function Spinner({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 space-y-3 text-slate-400">
+      <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
+      <p className="text-xs">{label}</p>
     </div>
   );
 }
