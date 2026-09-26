@@ -16,7 +16,7 @@ The guest's choice becomes the room staff must prepare, and the arrival time the
 | | |
 |---|---|
 | **Live demo** | https://roomwise-five.vercel.app |
-| **Guest side** | No login needed. Open the demo and you're a guest. |
+| **Guest side** | Browsing and comparing rooms is open to everyone. To **book**, sign in with your email: we send a 6-digit code (no password). No inbox handy? Use **`guest@demo.roomwise`**, whose code is shown on screen. |
 | **Staff side: admin** | Click **Housekeeping Ops** and log in with username **`admin`**, password **`roomwise-staff-demo`**. Sees every room, **assigns** dirty rooms to housekeepers, **approves** cleaned rooms (or sends them back), and manages staff accounts (**Team**). |
 | **Staff side: housekeepers** | **`ramesh`** / **`ramesh-demo-2026`** and **`sunita`** / **`sunita-demo-2026`**. Each sees only the rooms assigned to them: **Start cleaning → Cleaning done**. |
 | **Reset** | Demo data is shared by everyone who opens it. It re-seeds itself automatically when it is more than 6 hours old, so the queue always shows a realistic "this morning". Staff can also click **Reset demo**. |
@@ -24,7 +24,7 @@ The guest's choice becomes the room staff must prepare, and the arrival time the
 **A 2-minute walkthrough**
 
 1. **Pick the room.** On the guest side, keep tonight's dates. Floor 4 shows Rooms 401 and 403 at the same ₹5,000 price. Click **+ Compare** on both, then **Compare Specs Side-by-Side**. The comparison highlights that 403 has a pool view, a balcony and a bathtub.
-2. **Book it.** Book **403**, optionally with early check-in.
+2. **Book it.** Click book on **403**. You'll be asked to sign in with an email code (or use `guest@demo.roomwise`), then you can book, optionally with early check-in. **My bookings** in the top bar lists your stays.
 3. **Assign it (admin).** Open **Housekeeping Ops** and log in as `admin`. Room 403 now has your arrival time and priority, and nobody assigned. Assign it to Ramesh.
 4. **Clean it (housekeeper).** Log out, then log in as `ramesh`. He sees only his rooms. **Start cleaning → Cleaning done.**
 5. **Approve it (admin).** Log in as `admin` again and **Approve** Room 403. The front desk gets a (simulated) "guest may enter" message. Each person's **messages** show only what was sent to them.
@@ -111,7 +111,18 @@ MongoDB Atlas   rooms · bookings · room_nights · tasks · notifications
 
 **Housekeeping status changes** can only move one step (Dirty → Cleaning → Inspection → Ready). The update includes the expected current status in its filter, so if two housekeepers tap at once, the second gets a clear "someone else just updated this" message and can't skip inspection.
 
-**Auth.** The guest side is public, because guests browse and book without an account. The staff side has two roles:
+**Auth.** There are two separate kinds of login:
+
+- **Guests** sign in without a password. They enter their email, receive a **6-digit code**, and type it in. The first sign-in creates the account. Details:
+  - Codes are stored only as an HMAC, never as the code itself.
+  - A code expires after 10 minutes and works only once.
+  - Five wrong tries cancel the code.
+  - Guests have to wait 60 seconds before asking for a new code.
+  - A MongoDB TTL index deletes old codes automatically.
+  - A booking always takes the guest's name and email from the signed-in session, never from the request body, so nobody can book under someone else's name.
+  - Emails are sent through Gmail SMTP. One demo address (`guest@demo.roomwise`) shows its code on screen, so reviewers can test without an inbox.
+
+The staff side has two roles:
 
 - **Admin.** The admin's password comes from an environment variable, so a new deployment can never be locked out. Only the admin can create or remove staff accounts and reset the demo.
 - **Housekeepers.** The admin creates their accounts and hands over the username and password in person. The admin plans and inspects but never cleans, so the API refuses to let the admin start or finish a clean, and refuses to let a housekeeper touch rooms that aren't assigned to them. Staff don't sign themselves up and there's no email step, which matches how small hotels onboard staff. Passwords are stored as **scrypt hashes with a per-user salt**, and the API never returns them.
@@ -129,7 +140,7 @@ Logging in issues an **HMAC-signed, httpOnly, SameSite cookie** that holds the u
 - **Payments.** The confirmation says "pay at hotel". Real payment would need a Razorpay/Stripe checkout and a way to handle abandoned holds.
 - **PMS / channel-manager sync.** In reality, OTA bookings would also claim `room_nights`. This is the biggest piece before RoomWise could be used for real.
 - **Real SMS/WhatsApp.** Messages are logged and shown in the UI, clearly labelled *simulated*.
-- **Guest accounts with email verification, and cancelling or changing a booking.** I scoped this out on purpose. Sending verification codes needs an email provider and a verified sending domain, and it would force reviewers to sign up before trying the demo. Guests identify themselves by name and email on the booking instead.
+- **Cancelling or changing a booking.** Guests can see their bookings, but changes go through the hotel.
 - **Login rate limiting and password reset.** The admin can remove an account and create a new one instead.
 - **Modelling check-out.** A turnover's `checkoutAt` comes from the seed data. A real version would create a turnover automatically from each departing booking.
 
@@ -143,7 +154,7 @@ Logging in issues an **HMAC-signed, httpOnly, SameSite cookie** that holds the u
 **Next, in order**
 
 1. Talk to 3–5 housekeeping leads to check the priority rule against how they really decide.
-2. Add `propertyId` multi-tenancy, guest accounts (email + one-time code) with a "My bookings" page, and login rate limiting.
+2. Add `propertyId` multi-tenancy, booking cancellation, and a proper transactional email provider with a verified domain (instead of Gmail SMTP).
 3. Add an iCal/channel-manager import so bookings from other channels block nights too.
 4. Cap early check-ins by housekeeping capacity: only sell a 12:00 arrival if the queue can absorb it.
 5. Learn cleaning times from actual Start → Inspection durations.
@@ -154,7 +165,7 @@ Logging in issues an **HMAC-signed, httpOnly, SameSite cookie** that holds the u
 |---|---|---|
 | Kept the existing UI and replaced the logic underneath it | The prototype UI already covered the flow. The weak part was that priority was hard-coded and data lived only in `localStorage`, so a booking never reached the staff side on another device. | Some visual flourishes remain from the prototype |
 | One shared demo database, with the seed anchored to "now" | Reviewers see a realistic morning rush whenever they open it | Reviewers can see each other's test bookings. **Reset demo** fixes this |
-| Admin-created staff accounts, and no guest accounts | Gives staff real, separate identities with admin control, and nothing depends on an email service | Guests can't view their bookings later |
+| Admin-created staff accounts; passwordless email-code login for guests | Staff get real identities with admin control. Guests have no password to forget or leak | Guest login depends on Gmail SMTP (daily sending limits), so the demo address exists as a fallback |
 | Polling instead of websockets | 15 s delay is fine for housekeeping, and it works on serverless hosting | Not instant |
 | Claiming nights one by one instead of a transaction | Correct under races on any MongoDB tier, and simple to reason about | A crash halfway could leave orphaned nights (rare; would need a cleanup job) |
 | Kept secondary features (damage report, CSV export, print) | They were already built and cost nothing to keep | Not the focus. The core is booking → queue → ready |

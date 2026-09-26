@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Room, Booking, StayDates } from '../lib/types';
+import { Room, Booking, GuestSession, StayDates } from '../lib/types';
 import { BookingRequest } from '../lib/store';
 import { EARLY_CHECKIN_FEE, quote } from '../lib/booking-rules';
 import { formatPropertyTime } from '../lib/time';
@@ -9,6 +9,7 @@ import { X, CheckCircle2, ShieldCheck, Calendar, User, Mail, CreditCard, Sparkle
 
 interface BookingModalProps {
   room: Room | null;
+  guest: GuestSession | null;
   stay: StayDates;
   isOpen: boolean;
   onClose: () => void;
@@ -20,20 +21,18 @@ const formatDate = (d: string) =>
 
 export const BookingModal: React.FC<BookingModalProps> = ({
   room,
+  guest,
   stay,
   isOpen,
   onClose,
   onConfirmBooking,
 }) => {
-  // Prefilled so reviewers can click straight through the demo.
-  const [guestName, setGuestName] = useState('Ananya Sharma');
-  const [guestEmail, setGuestEmail] = useState('ananya.sharma@example.com');
   const [isEarlyCheckIn, setIsEarlyCheckIn] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isOpen || !room) return null;
+  if (!isOpen || !room || !guest) return null;
 
   const { nights, totalPrice: grandTotal } = quote(room.pricePerNight, stay.checkIn, stay.checkOut, isEarlyCheckIn);
 
@@ -42,7 +41,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setSubmitting(true);
     setError(null);
     try {
-      setConfirmedBooking(await onConfirmBooking({ roomId: room.id, guestName, guestEmail, isEarlyCheckIn }));
+      setConfirmedBooking(await onConfirmBooking({ roomId: room.id, isEarlyCheckIn }));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -197,32 +196,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
               {/* Inputs */}
               <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
-                    <User className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Full Name</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={guestName}
-                    onChange={e => setGuestName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
-                    <Mail className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Email Address</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={guestEmail}
-                    onChange={e => setGuestEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
-                  />
+                <div className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-300 flex items-center space-x-2">
+                  <User className="w-3.5 h-3.5 text-sky-400" />
+                  <span>
+                    Booking as <strong className="text-white">{guest.name}</strong>
+                  </span>
+                  <Mail className="w-3.5 h-3.5 text-slate-500 ml-2" />
+                  <span className="text-slate-400 truncate">{guest.email}</span>
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-300 flex items-center space-x-2">

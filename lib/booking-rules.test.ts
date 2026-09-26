@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { expectedArrival, quote } from './booking-rules';
-import { bookingSchema } from './validation';
+import { bookingSchema, requestCodeSchema, verifyCodeSchema } from './validation';
 
 describe('quote', () => {
   it('charges per night plus the early check-in fee', () => {
@@ -25,25 +25,35 @@ describe('bookingSchema', () => {
   const schema = bookingSchema('2026-09-26');
   const valid = {
     roomId: 'room_403',
-    guestName: 'Ananya Sharma',
-    guestEmail: 'Ananya@Example.com',
     checkIn: '2026-09-26',
     checkOut: '2026-09-28',
     isEarlyCheckIn: false,
   };
 
-  it('accepts a valid booking and normalises email', () => {
-    const parsed = schema.parse(valid);
-    expect(parsed.guestEmail).toBe('ananya@example.com');
+  it('accepts a valid booking', () => {
+    expect(schema.safeParse(valid).success).toBe(true);
   });
 
   it.each([
     ['past check-in', { checkIn: '2026-09-25' }],
     ['checkout before check-in', { checkOut: '2026-09-26' }],
     ['stay too long', { checkOut: '2026-11-30' }],
-    ['bad email', { guestEmail: 'nope' }],
     ['injected room id', { roomId: '{"$ne":null}' }],
   ])('rejects %s', (_label, patch) => {
     expect(schema.safeParse({ ...valid, ...patch }).success).toBe(false);
+  });
+});
+
+describe('guest sign-in schemas', () => {
+  it('normalises email and accepts the demo address', () => {
+    expect(requestCodeSchema.parse({ email: ' Ananya@Example.com ' }).email).toBe('ananya@example.com');
+    expect(requestCodeSchema.safeParse({ email: 'guest@demo.roomwise' }).success).toBe(true);
+  });
+
+  it('rejects bad emails and non 6-digit codes', () => {
+    expect(requestCodeSchema.safeParse({ email: 'nope' }).success).toBe(false);
+    expect(verifyCodeSchema.safeParse({ email: 'a@b.co', code: '12345' }).success).toBe(false);
+    expect(verifyCodeSchema.safeParse({ email: 'a@b.co', code: '12a456' }).success).toBe(false);
+    expect(verifyCodeSchema.safeParse({ email: 'a@b.co', code: '012345' }).success).toBe(true);
   });
 });

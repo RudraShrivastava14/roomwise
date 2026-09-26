@@ -42,27 +42,47 @@ export async function authenticate(username: string, password: string): Promise<
   return { username: user._id, displayName: user.displayName, role: 'staff' };
 }
 
-// ---- Sessions ----
+// ---- Signed tokens (shared by staff and guest sessions) ----
 
-/** Stateless signed cookie: base64url(JSON session + exp) "." HMAC. */
-export function createSessionToken(session: StaffSession, now = Date.now()): string {
+/**
+ * Stateless signed token: base64url(JSON payload + kind + exp) "." HMAC.
+ * `kind` stops a staff cookie from ever being accepted as a guest one, and vice versa.
+ */
+export function signToken(kind: string, data: object, ttlSeconds: number, now = Date.now()): string {
   const payload = Buffer.from(
-    JSON.stringify({ ...session, exp: Math.floor(now / 1000) + SESSION_TTL_SECONDS })
+    JSON.stringify({ ...data, kind, exp: Math.floor(now / 1000) + ttlSeconds })
   ).toString('base64url');
   return `${payload}.${sign(payload)}`;
 }
 
-export function parseSessionToken(token: string | undefined, now = Date.now()): StaffSession | null {
+export function readToken(kind: string, token: string | undefined, now = Date.now()): Record<string, unknown> | null {
   if (!token) return null;
   const [payload, sig] = token.split('.');
   if (!payload || !sig || !safeEqual(sig, sign(payload))) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
-    if (typeof data.exp !== 'number' || data.exp * 1000 <= now) return null;
-    return { username: data.username, displayName: data.displayName, role: data.role };
+    if (data.kind !== kind || typeof data.exp !== 'number' || data.exp * 1000 <= now) return null;
+    return data;
   } catch {
     return null;
   }
+}
+
+/** HMAC of a value with the server secret, e.g. to store verification codes without storing the code. */
+export function keyedHash(value: string): string {
+  return sign(value);
+}
+
+// ---- Staff sessions ----
+
+export function createSessionToken(session: StaffSession, now = Date.now()): string {
+  return signToken('staff', session, SESSION_TTL_SECONDS, now);
+}
+
+export function parseSessionToken(token: string | undefined, now = Date.now()): StaffSession | null {
+  const data = readToken('staff', token, now);
+  if (!data) return null;
+  return { username: String(data.username), displayName: String(data.displayName), role: data.role === 'admin' ? 'admin' : 'staff' };
 }
 
 /**

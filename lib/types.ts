@@ -121,3 +121,8 @@ export interface StaffMember {
   displayName: string;
   createdAt: string;
 }
+
+export interface GuestSession {
+  email: string;
+  name: string;
+}

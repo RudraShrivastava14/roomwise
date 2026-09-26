@@ -10,12 +10,22 @@ import { StaffLogin } from '../components/StaffLogin';
 import { ErrorPanel } from '../components/ErrorPanel';
 import { RoomComparisonModal } from '../components/RoomComparisonModal';
 import { BookingModal } from '../components/BookingModal';
+import { GuestSignIn } from '../components/GuestSignIn';
+import { MyBookings } from '../components/MyBookings';
 import { Hotel, Loader2 } from 'lucide-react';
 
 export default function Home() {
   const store = useRoomWiseStore();
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [selectedRoomForBooking, setSelectedRoomForBooking] = useState<Room | null>(null);
+  const [signInFor, setSignInFor] = useState<{ room: Room | null } | null>(null);
+  const [showMyBookings, setShowMyBookings] = useState(false);
+
+  // Booking needs a verified guest; browsing and comparing don't.
+  const startBooking = (room: Room) => {
+    if (store.guest) setSelectedRoomForBooking(room);
+    else setSignInFor({ room });
+  };
 
   const comparedRooms = store.rooms.filter(r => store.comparedRoomIds.includes(r.id));
 
@@ -56,6 +66,10 @@ export default function Home() {
         onModeChange={store.setActiveMode}
         comparedCount={store.comparedRoomIds.length}
         onOpenCompare={() => setIsCompareModalOpen(true)}
+        guest={store.guest}
+        onGuestSignIn={() => setSignInFor({ room: null })}
+        onGuestSignOut={store.guestLogout}
+        onOpenMyBookings={() => setShowMyBookings(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -71,7 +85,7 @@ export default function Home() {
             onToggleCompare={store.toggleCompareRoom}
             onClearCompare={store.clearCompare}
             onOpenCompareModal={() => setIsCompareModalOpen(true)}
-            onSelectBook={room => setSelectedRoomForBooking(room)}
+            onSelectBook={startBooking}
           />
         ) : (
           renderStaff()
@@ -84,17 +98,41 @@ export default function Home() {
         comparedRooms={comparedRooms}
         onSelectBook={room => {
           setIsCompareModalOpen(false);
-          setSelectedRoomForBooking(room);
+          startBooking(room);
         }}
       />
 
       <BookingModal
         room={selectedRoomForBooking}
+        guest={store.guest ?? null}
         stay={store.stay}
         isOpen={!!selectedRoomForBooking}
         onClose={() => setSelectedRoomForBooking(null)}
         onConfirmBooking={store.createBooking}
       />
+
+      <GuestSignIn
+        isOpen={!!signInFor}
+        reason={signInFor?.room ? `Sign in to book Room ${signInFor.room.roomNumber}. No password needed — we email you a 6-digit code.` : undefined}
+        onClose={() => setSignInFor(null)}
+        onRequestCode={store.requestGuestCode}
+        onVerify={store.verifyGuestCode}
+        onSignedIn={() => {
+          const room = signInFor?.room ?? null;
+          setSignInFor(null);
+          if (room) setSelectedRoomForBooking(room);
+        }}
+      />
+
+      {store.guest && (
+        <MyBookings
+          isOpen={showMyBookings}
+          guest={store.guest}
+          bookings={store.myBookings}
+          onLoad={store.loadMyBookings}
+          onClose={() => setShowMyBookings(false)}
+        />
+      )}
 
       <footer className="bg-slate-900 border-t border-slate-800 py-8 text-xs text-slate-400 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">

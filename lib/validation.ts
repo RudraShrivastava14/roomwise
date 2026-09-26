@@ -28,16 +28,28 @@ export function stayDatesSchema(today: string) {
     });
 }
 
+const guestEmail = z.string().trim().toLowerCase().email('Enter a valid email').max(120);
+const guestName = z.string().trim().min(2, 'Enter your full name').max(80, 'Name is too long');
+
+/** Booking request body. Who is booking comes from the signed-in guest session, not the body. */
 export function bookingSchema(today: string) {
   return z
     .object({
       roomId: z.string().regex(/^room_\d{3}$/, 'Unknown room'),
-      guestName: z.string().trim().min(2, 'Enter your full name').max(80, 'Name is too long'),
-      guestEmail: z.string().trim().toLowerCase().email('Enter a valid email').max(120),
       isEarlyCheckIn: z.boolean().default(false),
     })
     .and(stayDatesSchema(today));
 }
+
+export const requestCodeSchema = z.object({
+  email: guestEmail,
+  name: guestName.optional(),
+});
+
+export const verifyCodeSchema = z.object({
+  email: guestEmail,
+  code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code from your email'),
+});
 
 export type BookingInput = z.infer<ReturnType<typeof bookingSchema>>;
 

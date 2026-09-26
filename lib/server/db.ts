@@ -57,6 +57,8 @@ async function prepare(db: Db) {
   await db.collection('room_nights').createIndex({ bookingId: 1 });
   await db.collection('tasks').createIndex({ roomId: 1 }, { unique: true });
   await db.collection('notifications').createIndex({ timestamp: -1 });
+  await db.collection('guest_codes').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('bookings').createIndex({ guestEmail: 1, checkInDate: -1 });
 
   const seeded = await db.collection<DemoMeta>('meta').findOne({ _id: 'demo' });
   if (!seeded || (await db.collection('rooms').estimatedDocumentCount()) === 0) {

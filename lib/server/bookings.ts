@@ -1,6 +1,6 @@
 import 'server-only';
 import { MongoServerError } from 'mongodb';
-import { Booking, HousekeepingTask, Room } from '../types';
+import { Booking, GuestSession, HousekeepingTask, Room } from '../types';
 import { RoomDoc } from '../seed';
 import { BookingInput } from '../validation';
 import { expectedArrival, quote } from '../booking-rules';
@@ -27,7 +27,7 @@ export async function roomsForStay(checkIn: string, checkOut: string): Promise<R
  * room_nights, whose unique (roomId, night) index rejects a second claim —
  * so two guests racing for Room 403 can't both succeed.
  */
-export async function createBooking(input: BookingInput, now = new Date()): Promise<Booking> {
+export async function createBooking(input: BookingInput, guest: GuestSession, now = new Date()): Promise<Booking> {
   const db = await getDb();
   const { rooms, bookings, roomNights } = collections(db);
 
@@ -56,8 +56,8 @@ export async function createBooking(input: BookingInput, now = new Date()): Prom
     id: bookingId,
     roomId: room.id,
     roomNumber: room.roomNumber,
-    guestName: input.guestName,
-    guestEmail: input.guestEmail,
+    guestName: guest.name,
+    guestEmail: guest.email,
     checkInDate: input.checkIn,
     checkOutDate: input.checkOut,
     nights: nights.length,
@@ -132,4 +132,11 @@ async function attachArrivalToTurnover(booking: Booking, room: RoomDoc, now: Dat
       timeStyle: 'short',
     }).format(new Date(booking.arrivalAt))}${booking.isEarlyCheckIn ? ' (paid early check-in)' : ''}.`,
   });
+}
+
+/** A signed-in guest's own bookings, newest stay first. */
+export async function bookingsFor(email: string): Promise<Booking[]> {
+  const db = await getDb();
+  const docs = await collections(db).bookings.find({ guestEmail: email }).sort({ checkInDate: -1 }).limit(50).toArray();
+  return docs.map(d => fromDoc<Booking>(d));
 }

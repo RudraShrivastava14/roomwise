@@ -1,13 +1,18 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, ClipboardList, User, Hotel } from 'lucide-react';
+import { Sparkles, ClipboardList, User, Hotel, LogIn, LogOut, CalendarDays } from 'lucide-react';
+import { GuestSession } from '../lib/types';
 
 interface NavbarProps {
   activeMode: 'GUEST' | 'STAFF';
   onModeChange: (mode: 'GUEST' | 'STAFF') => void;
   comparedCount: number;
   onOpenCompare: () => void;
+  guest: GuestSession | null | undefined;
+  onGuestSignIn: () => void;
+  onGuestSignOut: () => void;
+  onOpenMyBookings: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,6 +20,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onModeChange,
   comparedCount,
   onOpenCompare,
+  guest,
+  onGuestSignIn,
+  onGuestSignOut,
+  onOpenMyBookings,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-xl">
@@ -67,6 +76,30 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action Bar */}
           <div className="flex items-center space-x-3">
+            {activeMode === 'GUEST' && guest && (
+              <>
+                <button
+                  onClick={onOpenMyBookings}
+                  className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg text-xs font-medium"
+                >
+                  <CalendarDays className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="hidden sm:inline">My bookings</span>
+                </button>
+                <span className="hidden md:inline text-xs text-slate-400">Hi, {guest.name.split(' ')[0]}</span>
+                <button onClick={onGuestSignOut} title="Sign out" className="text-slate-400 hover:text-white p-2 rounded-lg">
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+            {activeMode === 'GUEST' && guest === null && (
+              <button
+                onClick={onGuestSignIn}
+                className="flex items-center space-x-1.5 bg-sky-500 hover:bg-sky-400 text-white px-3 py-2 rounded-lg text-xs font-bold"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Guest sign in</span>
+              </button>
+            )}
             {activeMode === 'GUEST' && comparedCount > 0 && (
               <button
                 onClick={onOpenCompare}

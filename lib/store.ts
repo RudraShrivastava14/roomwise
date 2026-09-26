@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Booking, CleaningStatus, NotificationLog, QueueItem, Room, StaffMember, StaffSession, StayDates } from './types';
+import { Booking, CleaningStatus, GuestSession, NotificationLog, QueueItem, Room, StaffMember, StaffSession, StayDates } from './types';
 import { addDays, formatPropertyTime, propertyDate } from './time';
 
 const STAFF_POLL_MS = 15_000;
@@ -16,8 +16,6 @@ export interface StaffData {
 
 export interface BookingRequest {
   roomId: string;
-  guestName: string;
-  guestEmail: string;
   isEarlyCheckIn: boolean;
 }
 
@@ -78,6 +76,37 @@ export function useRoomWiseStore() {
   };
   const clearCompare = () => setComparedRoomIds([]);
 
+  // ---- Guest account (email code sign-in) ----
+  /** undefined = still checking, null = signed out. */
+  const [guest, setGuest] = useState<GuestSession | null | undefined>(undefined);
+  const [myBookings, setMyBookings] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    api<{ guest: GuestSession | null }>('/api/guest/me')
+      .then(d => setGuest(d.guest))
+      .catch(() => setGuest(null));
+  }, []);
+
+  const requestGuestCode = (email: string, name?: string) =>
+    api<{ demoCode?: string }>('/api/guest/request-code', { method: 'POST', body: JSON.stringify({ email, name }) });
+
+  const verifyGuestCode = async (email: string, code: string) => {
+    const data = await api<{ guest: GuestSession }>('/api/guest/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
+    setGuest(data.guest);
+    return data.guest;
+  };
+
+  const guestLogout = async () => {
+    await api('/api/guest/logout', { method: 'POST' }).catch(() => undefined);
+    setGuest(null);
+    setMyBookings([]);
+  };
+
+  const loadMyBookings = useCallback(async () => {
+    const data = await api<{ bookings: Booking[] }>('/api/guest/bookings');
+    setMyBookings(data.bookings);
+  }, []);
+
   const createBooking = async (req: BookingRequest): Promise<Booking> => {
     try {
       const { booking } = await api<{ booking: Booking }>('/api/bookings', {
@@ -85,6 +114,9 @@ export function useRoomWiseStore() {
         body: JSON.stringify({ ...req, ...stay }),
       });
       return booking;
+    } catch (err) {
+      if ((err as Error).message === 'Please sign in to book') setGuest(null);
+      throw err;
     } finally {
       // Refresh availability whether we won or lost a race for the room.
       loadRooms();
@@ -243,6 +275,12 @@ export function useRoomWiseStore() {
     toggleCompareRoom,
     clearCompare,
     createBooking,
+    guest,
+    myBookings,
+    requestGuestCode,
+    verifyGuestCode,
+    guestLogout,
+    loadMyBookings,
     // staff
     staff,
     team,
