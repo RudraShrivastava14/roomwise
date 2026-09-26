@@ -44,6 +44,7 @@ export async function getDb(): Promise<Db> {
     });
   }
   await globalForMongo._dbReady;
+  await refreshStaleDemo(db);
   return db;
 }
 
@@ -56,13 +57,40 @@ async function prepare(db: Db) {
   await db.collection('tasks').createIndex({ roomId: 1 }, { unique: true });
   await db.collection('notifications').createIndex({ timestamp: -1 });
 
-  if ((await db.collection('rooms').estimatedDocumentCount()) === 0) {
+  const seeded = await db.collection<DemoMeta>('meta').findOne({ _id: 'demo' });
+  if (!seeded || (await db.collection('rooms').estimatedDocumentCount()) === 0) {
     await seedDatabase(db);
   }
 }
 
+interface DemoMeta {
+  _id: 'demo';
+  seededAt: Date;
+}
+
+/**
+ * The demo seed is anchored to the time it was created, so after a few hours
+ * every arrival is in the past and the queue reads "late" everywhere. Reviewers
+ * open the link days later, so stale demo data is re-seeded automatically.
+ * Set DEMO_AUTO_RESET_HOURS=0 to disable (a real property would never want this).
+ */
+async function refreshStaleDemo(db: Db) {
+  const hours = Number(process.env.DEMO_AUTO_RESET_HOURS ?? 6);
+  if (!(hours > 0)) return;
+  const now = new Date();
+  // Atomic claim: when several requests notice staleness at once, only one re-seeds.
+  const claimed = await db
+    .collection<DemoMeta>('meta')
+    .findOneAndUpdate(
+      { _id: 'demo', seededAt: { $lt: new Date(now.getTime() - hours * 3_600_000) } },
+      { $set: { seededAt: now } }
+    );
+  if (claimed) await seedDatabase(db);
+}
+
 export async function seedDatabase(db: Db) {
   const seed = buildSeed();
+  await db.collection<DemoMeta>('meta').updateOne({ _id: 'demo' }, { $set: { seededAt: new Date() } }, { upsert: true });
   await Promise.all(
     ['rooms', 'tasks', 'bookings', 'room_nights', 'notifications'].map(name => db.collection(name).deleteMany({}))
   );
