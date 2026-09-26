@@ -15,7 +15,7 @@ The guest's choice becomes the room staff must prepare, and the arrival time the
 
 | | |
 |---|---|
-| **Live demo** | _LIVE_URL_ |
+| **Live demo** | https://roomwise-five.vercel.app |
 | **Guest side** | No login needed. Open the demo and you're a guest. |
 | **Staff side** | Click **Housekeeping Ops**, then enter the password **`roomwise-staff-demo`** |
 | **Reset** | On the staff page, **Reset demo** reloads the demo hotel with times anchored to *now*. The demo data is shared by everyone who opens it. |
