@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { isStaffRequest } from '@/lib/server/auth';
+import { currentStaff } from '@/lib/server/auth';
+import { handler } from '@/lib/server/http';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  return NextResponse.json({ staff: isStaffRequest() });
-}
+export const GET = handler(async () => NextResponse.json({ staff: await currentStaff() }));

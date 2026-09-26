@@ -2,6 +2,7 @@ import 'server-only';
 import { Db, MongoClient } from 'mongodb';
 import { Booking, HousekeepingTask, NotificationLog } from '../types';
 import { buildSeed, RoomDoc } from '../seed';
+import { hashPassword, StaffUserDoc } from './password';
 
 /** Stored documents use the domain `id` as Mongo's `_id`. */
 type Doc<T extends { id: string }> = Omit<T, 'id'> & { _id: string };
@@ -60,6 +61,8 @@ async function prepare(db: Db) {
   const seeded = await db.collection<DemoMeta>('meta').findOne({ _id: 'demo' });
   if (!seeded || (await db.collection('rooms').estimatedDocumentCount()) === 0) {
     await seedDatabase(db);
+  } else {
+    await ensureDemoStaff(db);
   }
 }
 
@@ -88,8 +91,29 @@ async function refreshStaleDemo(db: Db) {
   if (claimed) await seedDatabase(db);
 }
 
+/** A non-admin login reviewers can try. Created once; never overwritten by a reset. */
+export const DEMO_STAFF = { username: 'ramesh', displayName: 'Ramesh K.', password: 'ramesh-demo-2026' };
+
+async function ensureDemoStaff(db: Db) {
+  const users = db.collection<StaffUserDoc>('staff_users');
+  if (await users.countDocuments({ _id: DEMO_STAFF.username }, { limit: 1 })) return;
+  await users.updateOne(
+    { _id: DEMO_STAFF.username },
+    {
+      $setOnInsert: {
+        displayName: DEMO_STAFF.displayName,
+        passwordHash: await hashPassword(DEMO_STAFF.password),
+        createdAt: new Date().toISOString(),
+        createdBy: 'admin',
+      },
+    },
+    { upsert: true }
+  );
+}
+
 export async function seedDatabase(db: Db) {
   const seed = buildSeed();
+  await ensureDemoStaff(db);
   await db.collection<DemoMeta>('meta').updateOne({ _id: 'demo' }, { $set: { seededAt: new Date() } }, { upsert: true });
   await Promise.all(
     ['rooms', 'tasks', 'bookings', 'room_nights', 'notifications'].map(name => db.collection(name).deleteMany({}))

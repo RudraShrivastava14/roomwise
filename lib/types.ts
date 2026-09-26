@@ -104,3 +104,15 @@ export interface StayDates {
   checkIn: string;
   checkOut: string;
 }
+
+export interface StaffSession {
+  username: string;
+  displayName: string;
+  role: 'admin' | 'staff';
+}
+
+export interface StaffMember {
+  username: string;
+  displayName: string;
+  createdAt: string;
+}

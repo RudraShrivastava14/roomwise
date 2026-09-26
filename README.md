@@ -17,7 +17,8 @@ The guest's choice becomes the room staff must prepare, and the arrival time the
 |---|---|
 | **Live demo** | https://roomwise-five.vercel.app |
 | **Guest side** | No login needed. Open the demo and you're a guest. |
-| **Staff side** | Click **Housekeeping Ops**, then enter the password **`roomwise-staff-demo`** |
+| **Staff side: admin** | Click **Housekeeping Ops** and log in with username **`admin`**, password **`roomwise-staff-demo`**. The admin can also create and remove staff accounts (**Team**) and reset the demo. |
+| **Staff side: housekeeper** | Username **`ramesh`**, password **`ramesh-demo-2026`**. Can work the queue, but can't manage the team. |
 | **Reset** | Demo data is shared by everyone who opens it. It re-seeds itself automatically when it is more than 6 hours old, so the queue always shows a realistic "this morning". Staff can also click **Reset demo**. |
 
 **A 2-minute walkthrough**
@@ -98,7 +99,12 @@ MongoDB Atlas   rooms · bookings · room_nights · tasks · notifications
 
 **Housekeeping status changes** can only move one step (Dirty → Cleaning → Inspection → Ready). The update includes the expected current status in its filter, so if two housekeepers tap at once, the second gets a clear "someone else just updated this" message and can't skip inspection.
 
-**Auth.** The guest side is public, because guests browse without an account. The staff API needs a login: a password checked with a timing-safe comparison, which issues an **HMAC-signed, httpOnly, SameSite cookie** that expires after 12 hours (one shift). There's no session table, since there's only one staff role. Secrets live in environment variables, never in git (see `.env.example`).
+**Auth.** The guest side is public, because guests browse and book without an account. The staff side has two roles:
+
+- **Admin.** The admin's password comes from an environment variable, so a new deployment can never be locked out. Only the admin can create or remove staff accounts and reset the demo.
+- **Housekeepers.** The admin creates their accounts and hands over the username and password in person. Staff don't sign themselves up and there's no email step, which matches how small hotels onboard staff. Passwords are stored as **scrypt hashes with a per-user salt**, and the API never returns them.
+
+Logging in issues an **HMAC-signed, httpOnly, SameSite cookie** that holds the username and role and expires after 12 hours (one shift). Housekeeper sessions are re-checked against the database on each request, so removing someone locks them out immediately. Whoever taps *Start Cleaning* is recorded on the room. Secrets live in environment variables, never in git (see `.env.example`).
 
 **Failure handling.** Every route goes through one wrapper that turns errors into JSON (`400/401/404/409/503`). The UI shows these inline, with retry buttons and loading/empty states. If the database is unreachable, users see "Database is unavailable" rather than a crashed page. The staff view polls every 15 s. If a refresh fails, it keeps showing the last data and says so.
 
@@ -111,7 +117,8 @@ MongoDB Atlas   rooms · bookings · room_nights · tasks · notifications
 - **Payments.** The confirmation says "pay at hotel". Real payment would need a Razorpay/Stripe checkout and a way to handle abandoned holds.
 - **PMS / channel-manager sync.** In reality, OTA bookings would also claim `room_nights`. This is the biggest piece before RoomWise could be used for real.
 - **Real SMS/WhatsApp.** Messages are logged and shown in the UI, clearly labelled *simulated*.
-- **Guest accounts, and cancelling or changing a booking.**
+- **Guest accounts with email verification, and cancelling or changing a booking.** I scoped this out on purpose. Sending verification codes needs an email provider and a verified sending domain, and it would force reviewers to sign up before trying the demo. Guests identify themselves by name and email on the booking instead.
+- **Login rate limiting and password reset.** The admin can remove an account and create a new one instead.
 - **Modelling check-out.** A turnover's `checkoutAt` comes from the seed data. A real version would create a turnover automatically from each departing booking.
 
 **Simplified**
@@ -124,7 +131,7 @@ MongoDB Atlas   rooms · bookings · room_nights · tasks · notifications
 **Next, in order**
 
 1. Talk to 3–5 housekeeping leads to check the priority rule against how they really decide.
-2. Add `propertyId` multi-tenancy and per-housekeeper accounts, so tasks are assigned to people.
+2. Add `propertyId` multi-tenancy, guest accounts (email + one-time code) with a "My bookings" page, and login rate limiting.
 3. Add an iCal/channel-manager import so bookings from other channels block nights too.
 4. Cap early check-ins by housekeeping capacity: only sell a 12:00 arrival if the queue can absorb it.
 5. Learn cleaning times from actual Start → Inspection durations.
@@ -135,7 +142,7 @@ MongoDB Atlas   rooms · bookings · room_nights · tasks · notifications
 |---|---|---|
 | Kept the existing UI and replaced the logic underneath it | The prototype UI already covered the flow. The weak part was that priority was hard-coded and data lived only in `localStorage`, so a booking never reached the staff side on another device. | Some visual flourishes remain from the prototype |
 | One shared demo database, with the seed anchored to "now" | Reviewers see a realistic morning rush whenever they open it | Reviewers can see each other's test bookings. **Reset demo** fixes this |
-| Password-only staff login | Meets the brief's "demo credentials" requirement with real cookie security, without building user management | No per-user audit trail |
+| Admin-created staff accounts, and no guest accounts | Gives staff real, separate identities with admin control, and nothing depends on an email service | Guests can't view their bookings later |
 | Polling instead of websockets | 15 s delay is fine for housekeeping, and it works on serverless hosting | Not instant |
 | Claiming nights one by one instead of a transaction | Correct under races on any MongoDB tier, and simple to reason about | A crash halfway could leave orphaned nights (rare; would need a cleanup job) |
 | Kept secondary features (damage report, CSV export, print) | They were already built and cost nothing to keep | Not the focus. The core is booking → queue → ready |

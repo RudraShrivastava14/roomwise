@@ -55,3 +55,19 @@ export const damageReportSchema = z.object({
 export function firstIssue(err: z.ZodError): string {
   return err.issues[0]?.message ?? 'Invalid input';
 }
+
+export const loginSchema = z.object({
+  username: z.string().trim().min(1, 'Enter your username').max(32),
+  password: z.string().min(1, 'Enter your password').max(200),
+});
+
+export const newStaffSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9._-]{3,32}$/, 'Username: 3–32 letters, numbers, dots, dashes or underscores')
+    .refine(u => u !== 'admin', 'That username is reserved'),
+  displayName: z.string().trim().min(2, 'Enter their name').max(60),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(100),
+});

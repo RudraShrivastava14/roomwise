@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CleaningStatus, PriorityLevel, NotificationLog, QueueItem } from '../lib/types';
+import { CleaningStatus, PriorityLevel, NotificationLog, QueueItem, StaffMember, StaffSession } from '../lib/types';
+import { StaffTeamPanel } from './StaffTeamPanel';
 import { StaffData } from '../lib/store';
 import { formatPropertyTime } from '../lib/time';
 import { HIGH_BUFFER_MAX, URGENT_BUFFER_MAX } from '../lib/priority';
@@ -27,9 +28,15 @@ import {
   LogOut,
   Loader2,
   Hourglass,
+  Users,
 } from 'lucide-react';
 
 interface StaffViewProps {
+  staff: StaffSession;
+  team: StaffMember[];
+  onLoadTeam: () => Promise<void>;
+  onAddStaff: (member: { username: string; displayName: string; password: string }) => Promise<void>;
+  onRemoveStaff: (username: string) => Promise<void>;
   data: StaffData;
   refreshError: string | null;
   latestToast: NotificationLog | null;
@@ -49,6 +56,11 @@ function describeBuffer(task: QueueItem): { text: string; className: string } {
 }
 
 export const StaffView: React.FC<StaffViewProps> = ({
+  staff,
+  team,
+  onLoadTeam,
+  onAddStaff,
+  onRemoveStaff,
   data,
   refreshError,
   latestToast,
@@ -63,6 +75,8 @@ export const StaffView: React.FC<StaffViewProps> = ({
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [showTeam, setShowTeam] = useState(false);
+  const isAdmin = staff.role === 'admin';
   const [filterFloor, setFilterFloor] = useState<number | 'ALL'>('ALL');
   const [filterStatus, setFilterStatus] = useState<CleaningStatus | 'ALL'>('ALL');
   const [showNotificationDrawer, setShowNotificationDrawer] = useState(false);
@@ -167,6 +181,12 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <ClipboardList className="w-3.5 h-3.5" />
               <span>Housekeeping & Room Readiness Operations Engine</span>
             </div>
+            <div className="text-xs text-slate-400 mt-2">
+              Signed in as <strong className="text-white">{staff.displayName}</strong>
+              <span className="ml-1.5 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-indigo-300">
+                {isAdmin ? 'Admin' : 'Housekeeping'}
+              </span>
+            </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-2">
               Housekeeping Priority Dispatch Queue
             </h1>
@@ -202,6 +222,17 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <span>Print Sheet</span>
             </button>
 
+            {isAdmin && (
+              <button
+                onClick={() => setShowTeam(v => !v)}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3.5 py-2.5 rounded-xl font-bold transition-all flex items-center space-x-1.5"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Team</span>
+              </button>
+            )}
+
+            {isAdmin && (
             <button
               onClick={handleReset}
               disabled={resetting}
@@ -211,6 +242,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               {resetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
               <span>Reset demo</span>
             </button>
+            )}
 
             <button
               onClick={onLogout}
@@ -249,6 +281,10 @@ export const StaffView: React.FC<StaffViewProps> = ({
           </div>
         </div>
       </div>
+
+      {isAdmin && showTeam && (
+        <StaffTeamPanel team={team} onLoad={onLoadTeam} onAdd={onAddStaff} onRemove={onRemoveStaff} />
+      )}
 
       {/* Notification Log Drawer Overlay */}
       {showNotificationDrawer && (

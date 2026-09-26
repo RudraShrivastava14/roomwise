@@ -20,8 +20,8 @@ export default function Home() {
   const comparedRooms = store.rooms.filter(r => store.comparedRoomIds.includes(r.id));
 
   const renderStaff = () => {
-    if (store.isStaff === null) return <Spinner label="Checking session..." />;
-    if (!store.isStaff) return <StaffLogin onLogin={store.login} />;
+    if (store.staff === undefined) return <Spinner label="Checking session..." />;
+    if (!store.staff) return <StaffLogin onLogin={store.login} />;
     if (!store.staffData) {
       return store.staffError ? (
         <ErrorPanel message={store.staffError} onRetry={store.reloadStaff} />
@@ -31,6 +31,11 @@ export default function Home() {
     }
     return (
       <StaffView
+        staff={store.staff}
+        team={store.team}
+        onLoadTeam={store.loadTeam}
+        onAddStaff={store.addStaffMember}
+        onRemoveStaff={store.removeStaffMember}
         data={store.staffData}
         refreshError={store.staffError}
         latestToast={store.latestToast}

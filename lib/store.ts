@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Booking, CleaningStatus, NotificationLog, QueueItem, Room, StayDates } from './types';
+import { Booking, CleaningStatus, NotificationLog, QueueItem, Room, StaffMember, StaffSession, StayDates } from './types';
 import { addDays, formatPropertyTime, propertyDate } from './time';
 
 const STAFF_POLL_MS = 15_000;
@@ -92,16 +92,17 @@ export function useRoomWiseStore() {
   };
 
   // ---- Staff side ----
-  const [isStaff, setIsStaff] = useState<boolean | null>(null);
+  /** undefined = still checking, null = signed out. */
+  const [staff, setStaff] = useState<StaffSession | null | undefined>(undefined);
   const [staffData, setStaffData] = useState<StaffData | null>(null);
   const [staffError, setStaffError] = useState<string | null>(null);
   const [latestToast, setLatestToast] = useState<NotificationLog | null>(null);
   const lastSeenNotif = useRef<string | null>(null);
 
   useEffect(() => {
-    api<{ staff: boolean }>('/api/auth/me')
-      .then(d => setIsStaff(d.staff))
-      .catch(() => setIsStaff(false));
+    api<{ staff: StaffSession | null }>('/api/auth/me')
+      .then(d => setStaff(d.staff))
+      .catch(() => setStaff(null));
   }, []);
 
   const loadStaff = useCallback(async () => {
@@ -118,29 +119,51 @@ export function useRoomWiseStore() {
       lastSeenNotif.current = newest?.id ?? null;
     } catch (err) {
       const message = (err as Error).message;
-      if (message === 'Staff login required') setIsStaff(false);
+      if (message === 'Staff login required') setStaff(null);
       setStaffError(message);
     }
   }, []);
 
   // Poll while the dashboard is open so bookings made on another device show up.
   useEffect(() => {
-    if (activeMode !== 'STAFF' || !isStaff) return;
+    if (activeMode !== 'STAFF' || !staff) return;
     loadStaff();
     const id = setInterval(loadStaff, STAFF_POLL_MS);
     return () => clearInterval(id);
-  }, [activeMode, isStaff, loadStaff]);
+  }, [activeMode, staff, loadStaff]);
 
-  const login = async (password: string) => {
-    await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ password }) });
-    setIsStaff(true);
+  const login = async (username: string, password: string) => {
+    const data = await api<{ staff: StaffSession }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    setStaff(data.staff);
   };
 
   const logout = async () => {
     await api('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-    setIsStaff(false);
+    setStaff(null);
     setStaffData(null);
+    setTeam([]);
     lastSeenNotif.current = null;
+  };
+
+  // ---- Admin: team management ----
+  const [team, setTeam] = useState<StaffMember[]>([]);
+
+  const loadTeam = useCallback(async () => {
+    const data = await api<{ staff: StaffMember[] }>('/api/staff/users');
+    setTeam(data.staff);
+  }, []);
+
+  const addStaffMember = async (member: { username: string; displayName: string; password: string }) => {
+    await api('/api/staff/users', { method: 'POST', body: JSON.stringify(member) });
+    await loadTeam();
+  };
+
+  const removeStaffMember = async (username: string) => {
+    await api(`/api/staff/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    await loadTeam();
   };
 
   const updateTaskStatus = async (taskId: string, status: CleaningStatus) => {
@@ -210,7 +233,11 @@ export function useRoomWiseStore() {
     clearCompare,
     createBooking,
     // staff
-    isStaff,
+    staff,
+    team,
+    loadTeam,
+    addStaffMember,
+    removeStaffMember,
     staffData,
     staffError,
     reloadStaff: loadStaff,

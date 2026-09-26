@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { staffSnapshot } from '@/lib/server/housekeeping';
-import { handler } from '@/lib/server/http';
+import { handler, requireStaff } from '@/lib/server/http';
 
 export const dynamic = 'force-dynamic';
 
 /** GET /api/staff/queue — rooms, prioritized turnover queue, and dispatch log. */
-export const GET = handler(async () => NextResponse.json(await staffSnapshot()), { staffOnly: true });
+export const GET = handler(async () => {
+  await requireStaff();
+  return NextResponse.json(await staffSnapshot());
+});

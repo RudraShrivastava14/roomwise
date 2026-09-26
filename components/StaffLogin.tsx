@@ -4,10 +4,11 @@ import React, { useState } from 'react';
 import { KeyRound, Loader2, LogIn } from 'lucide-react';
 
 interface StaffLoginProps {
-  onLogin: (password: string) => Promise<void>;
+  onLogin: (username: string, password: string) => Promise<void>;
 }
 
 export const StaffLogin: React.FC<StaffLoginProps> = ({ onLogin }) => {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -17,7 +18,7 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ onLogin }) => {
     setSubmitting(true);
     setError(null);
     try {
-      await onLogin(password);
+      await onLogin(username, password);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -33,20 +34,36 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ onLogin }) => {
         </div>
         <h1 className="text-xl font-extrabold text-white">Housekeeping staff login</h1>
         <p className="text-xs text-slate-400">
-          The turnover queue shows guest names and arrival times, so it is staff-only.
+          Staff accounts are created by the hotel admin. Ask your admin for your username and password.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
+          <label htmlFor="staff-username" className="block text-xs font-semibold text-slate-300 mb-1">
+            Username
+          </label>
+          <input
+            id="staff-username"
+            type="text"
+            required
+            autoFocus
+            autoComplete="username"
+            autoCapitalize="none"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+
+        <div>
           <label htmlFor="staff-password" className="block text-xs font-semibold text-slate-300 mb-1">
-            Staff password
+            Password
           </label>
           <input
             id="staff-password"
             type="password"
             required
-            autoFocus
             autoComplete="current-password"
             value={password}
             onChange={e => setPassword(e.target.value)}
@@ -71,7 +88,7 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ onLogin }) => {
       </form>
 
       <p className="text-[11px] text-slate-500 text-center">
-        Reviewing the demo? The staff password is in the project README.
+        Reviewing the demo? Admin and housekeeper logins are in the project README.
       </p>
     </div>
   );

@@ -36,7 +36,7 @@ export async function staffSnapshot(now = new Date()): Promise<StaffSnapshot> {
   };
 }
 
-export async function advanceTask(taskId: string, to: CleaningStatus, now = new Date()): Promise<void> {
+export async function advanceTask(taskId: string, to: CleaningStatus, actor: string, now = new Date()): Promise<void> {
   const db = await getDb();
   const { tasks, rooms } = collections(db);
 
@@ -51,7 +51,14 @@ export async function advanceTask(taskId: string, to: CleaningStatus, now = new 
   // Conditional on the status we read, so two housekeepers tapping at once can't skip a step.
   const res = await tasks.updateOne(
     { _id: taskId, status: from },
-    { $set: { status: to, updatedAt: now.toISOString(), assignedStaff: task.assignedStaff ?? 'Ramesh K.' } }
+    {
+      $set: {
+        status: to,
+        updatedAt: now.toISOString(),
+        // Whoever starts the clean owns the room; later steps keep that owner.
+        assignedStaff: to === 'CLEANING' ? actor : task.assignedStaff ?? actor,
+      },
+    }
   );
   if (res.modifiedCount === 0) {
     throw new HttpError(409, `Room ${task.roomNumber} was just updated by someone else. Refresh to see the latest state.`);
@@ -62,7 +69,7 @@ export async function advanceTask(taskId: string, to: CleaningStatus, now = new 
     await logNotification(db, {
       type: 'WHATSAPP',
       recipient: 'Front desk',
-      message: `Room ${task.roomNumber} is inspected and READY${task.nextGuestName ? ` for ${task.nextGuestName}` : ''}.`,
+      message: `Room ${task.roomNumber} is inspected and READY${task.nextGuestName ? ` for ${task.nextGuestName}` : ''} (marked by ${actor}).`,
     });
   }
 }
