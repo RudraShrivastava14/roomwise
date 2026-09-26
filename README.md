@@ -1,166 +1,175 @@
-# RoomWise — Micro-SaaS for Hospitality
+# RoomWise
 
-> **Giving guests complete transparency over which physical hotel room they book, while giving hotel staff real-time operational visibility to prioritize room turnover.**
+**Guests book the exact room they want. Housekeeping gets that exact room ready in time.**
+
+RoomWise is a small tool for independent hotels, resorts and BnBs. It does two connected things:
+
+1. **Exact-room booking.** A guest picks their dates, browses a floor plan, compares rooms side by side, and books *Room 403*, not "a Deluxe Room".
+2. **Turnover queue.** Housekeeping sees every room that needs cleaning, sorted by how much time is left before its next guest arrives.
+
+The guest's choice becomes the room staff must prepare, and the arrival time they book is what sets that room's priority.
 
 ---
 
-## 🚀 Live Demo & Quickstart Guide
+## Try it
 
-- **Live Web Application**: [RoomWise Micro-SaaS Demo](https://roomwise-demo.vercel.app)
-- **Demo Mode Credentials**: No login required — instant 1-click toggle between **Guest Room Selector** and **Housekeeping Ops Dashboard** in the top navigation bar.
-- **Demo Reset**: Click **"Reset Demo"** in the navigation header to restore default rooms, bookings, and housekeeping queue state at any time.
+| | |
+|---|---|
+| **Live demo** | _LIVE_URL_ |
+| **Guest side** | No login needed. Open the demo and you're a guest. |
+| **Staff side** | Click **Housekeeping Ops**, then enter the password **`roomwise-staff-demo`** |
+| **Reset** | On the staff page, **Reset demo** reloads the demo hotel with times anchored to *now*. The demo data is shared by everyone who opens it. |
 
-### 💻 Local Development Setup
+**A 2-minute walkthrough**
+
+1. **Pick the room.** On the guest side, keep tonight's dates. Floor 4 shows Rooms 401 and 403 at the same ₹5,000 price. Click **+ Compare** on both, then **Compare Specs Side-by-Side**. The comparison highlights that 403 has a pool view, a balcony and a bathtub.
+2. **Book it.** Book **403**, optionally with early check-in.
+3. **Find it in the staff queue.** Open **Housekeeping Ops** and log in. Room 403 now has your arrival time and appears near the top, with its slack in minutes.
+4. **Clean it.** Take it through **Start Cleaning → Send for Inspection → Mark Ready**.
+5. **Try to double-book it.** Back on the guest side, 403 now shows *Booked for your dates*. Change the dates and it becomes available again.
+
+---
+
+## 1. The problem, and why I believe it's real
+
+**Guests book a category, but they experience a specific room.** Two "Deluxe" rooms at the same price can differ in view, balcony, bathtub, size and distance from the lift. Most booking flows hide this, so the guest learns what they got only at the front desk.
+
+This is a real gap, and I don't think I've invented it:
+
+- **Large chains already sell exact-room choice as a feature.** Hilton lets Honors members choose a room from floor-plan maps during digital check-in, and the app shows photos plus attributes such as floor and distance from the elevator ([Hospitality Technology](https://hospitalitytech.com/hilton-rolls-out-digital-check-inout-room-selection-and-customization-across-4000-properties), [The Frugal South walkthrough](https://www.thefrugalsouth.com/how-to-check-in-select-your-room-in-the-hilton-honors-app/)).
+- **Guests will pay for it.** TUI BLUE charges **€10 per room per night** to reserve an exact room number from an interactive hotel map ([TUI BLUE blog](https://blog.tui-blue.com/en/select-your-preferred-room/)). A resort chain charging for this suggests the demand is real, and it's revenue an independent property could capture too.
+- **Otherwise a request is only a request.** Consumer guides warn that room preferences typed into a booking are "subject to availability". A paid, confirmed selection is the only reliable way to get a specific room ([Travel Fine Print](https://travelfineprint.com/hotel-room-type-vs-room-request/)).
+
+Independent properties usually don't have a chain's app team. This feature is the part I'm making available to them.
+
+**Promising a specific room creates an operations problem.** Once a guest is promised Room 403 from 12:00, *that* room has to be ready by 12:00. Swapping in another Deluxe room is no longer an option. Industry writing on housekeeping bottlenecks describes the same failure: when staffing is tight, "room readiness becomes unpredictable" and "early arrivals may be forced to wait longer for check-in" ([Hotel Management Network](https://www.hotelmanagement-network.com/features/how-housekeeping-bottlenecks-affect-hotel-performance/)). A queue ordered by checkout time or room number cleans the wrong room first.
+
+That's why RoomWise combines both halves: exact-room booking is only safe to offer if the turnover side is tied to it.
+
+**Honest limit of my research:** my evidence is public sources, not interviews with hotel staff. Before building further, the first thing I'd do is talk to 3–5 front-desk or housekeeping leads at independent properties to confirm how they prioritize today.
+
+## 2. Users and workflow
+
+| | Before | With RoomWise |
+|---|---|---|
+| **Guest** (Ananya, booking a weekend) | Books "Deluxe". At check-in gets a city-view room with no balcony, while the pool-view room on the same floor at the same price went to someone else. | Picks dates, compares 401 and 403 side by side, and books **403**. The confirmation names the room. |
+| **Housekeeping lead** (Ramesh, morning shift) | Works from a printed departures list or WhatsApp messages. Cleans in room-number order. Finds out a guest arrived early when the front desk calls. | Opens a queue sorted by **slack**. The room whose guest arrives soonest, relative to the work left, is at the top. One tap moves a room to the next step, and the front desk gets a (simulated) "ready" message. |
+
+**How the priority is computed** (a pure function, see [`lib/priority.ts`](lib/priority.ts)):
+
+```
+slack = next arrival − max(now, checkout time) − remaining work
+remaining work = cleaning estimate (minus time already spent) + 10 min inspection
+URGENT ≤ 30 min · HIGH ≤ 90 min · NORMAL above · LOW if no guest is booked in
+```
+
+The `max(now, checkout)` term matters. A room whose guest hasn't checked out yet can't be cleaned early, so it may be more urgent than a room that is already empty. Early check-in isn't hard-coded as "urgent". It moves the arrival to 12:00, and the arrival time alone raises the room's priority. The example from my original brief (402 must outrank 403) is a unit test.
+
+## 3. Architecture
+
+```
+Browser (Next.js client components)
+   │  fetch JSON
+   ▼
+Next.js Route Handlers  /api/rooms  /api/bookings  /api/staff/*  /api/auth/*
+   │  zod validation → service functions (lib/server/*) → pure rules (lib/priority.ts, lib/booking-rules.ts)
+   ▼
+MongoDB Atlas   rooms · bookings · room_nights · tasks · notifications
+```
+
+**Stack and why**
+
+- **Next.js 14 (App Router) + TypeScript.** UI and API live in one deployable app. For a tool this size, a separate backend would add deploy complexity without buying anything.
+- **MongoDB Atlas.** Rooms have uneven attribute lists (amenities, images), which fit documents well. The free tier is enough for a demo. I use the plain driver rather than Mongoose, because a few typed helpers were all I needed.
+- **zod.** One schema per API input, plus shared limits (e.g. max stay) used by the date pickers. Invalid dates, bad emails and injected objects (`{"$ne": null}`) are rejected before any query runs.
+- **Vitest.** For the logic that must be right: the priority, time and booking rules (20 tests).
+
+**Data model**
+
+| Collection | Holds | Notes |
+|---|---|---|
+| `rooms` | Physical attributes plus the current housekeeping status | `_id` like `room_403` |
+| `bookings` | Guest, stay dates, expected arrival, price | Price = nightly rate × nights, plus the early check-in fee |
+| `room_nights` | One document per room per booked night | **Unique index on `(roomId, night)`**. See below. |
+| `tasks` | One turnover per room: status, checkout time, next arrival | Stores *facts only*. Priority and slack are computed when read, so they never go stale. |
+| `notifications` | Log of simulated SMS/WhatsApp messages | |
+
+**Preventing double booking.** Checking "is it free?" and then inserting would let two guests who click at the same moment both get Room 403. Instead, a booking *claims* each night by inserting into `room_nights`, and the unique index makes MongoDB reject the second claim. If any night fails, the booking releases the nights it already claimed and returns `409`. I tested this with 5 simultaneous requests for the same room: exactly 1 succeeded.
+
+**Housekeeping status changes** can only move one step (Dirty → Cleaning → Inspection → Ready). The update includes the expected current status in its filter, so if two housekeepers tap at once, the second gets a clear "someone else just updated this" message and can't skip inspection.
+
+**Auth.** The guest side is public, because guests browse without an account. The staff API needs a login: a password checked with a timing-safe comparison, which issues an **HMAC-signed, httpOnly, SameSite cookie** that expires after 12 hours (one shift). There's no session table, since there's only one staff role. Secrets live in environment variables, never in git (see `.env.example`).
+
+**Failure handling.** Every route goes through one wrapper that turns errors into JSON (`400/401/404/409/503`). The UI shows these inline, with retry buttons and loading/empty states. If the database is unreachable, users see "Database is unavailable" rather than a crashed page. The staff view polls every 15 s. If a refresh fails, it keeps showing the last data and says so.
+
+**Multi-tenancy.** None, deliberately: this is one demo property. The next step would be a `propertyId` on every document, part of every index, and taken from the staff session.
+
+## 4. What I left out or simplified, and what's next
+
+**Left out on purpose**
+
+- **Payments.** The confirmation says "pay at hotel". Real payment would need a Razorpay/Stripe checkout and a way to handle abandoned holds.
+- **PMS / channel-manager sync.** In reality, OTA bookings would also claim `room_nights`. This is the biggest piece before RoomWise could be used for real.
+- **Real SMS/WhatsApp.** Messages are logged and shown in the UI, clearly labelled *simulated*.
+- **Guest accounts, and cancelling or changing a booking.**
+- **Modelling check-out.** A turnover's `checkoutAt` comes from the seed data. A real version would create a turnover automatically from each departing booking.
+
+**Simplified**
+
+- Cleaning estimate is a fixed number per room, and inspection takes 10 minutes. The next step would be to learn both from actual history.
+- Same-day bookings made after the standard check-in time assume the guest arrives one hour after booking.
+- Times use IST, for one property.
+- The early check-in fee is flat, with no limit on how many are sold per day.
+
+**Next, in order**
+
+1. Talk to 3–5 housekeeping leads to check the priority rule against how they really decide.
+2. Add `propertyId` multi-tenancy and per-housekeeper accounts, so tasks are assigned to people.
+3. Add an iCal/channel-manager import so bookings from other channels block nights too.
+4. Cap early check-ins by housekeeping capacity: only sell a 12:00 arrival if the queue can absorb it.
+5. Learn cleaning times from actual Start → Inspection durations.
+
+## 5. Trade-offs made under the deadline
+
+| Decision | Why | Cost |
+|---|---|---|
+| Kept the existing UI and replaced the logic underneath it | The prototype UI already covered the flow. The weak part was that priority was hard-coded and data lived only in `localStorage`, so a booking never reached the staff side on another device. | Some visual flourishes remain from the prototype |
+| One shared demo database, with the seed anchored to "now" | Reviewers see a realistic morning rush whenever they open it | Reviewers can see each other's test bookings. **Reset demo** fixes this |
+| Password-only staff login | Meets the brief's "demo credentials" requirement with real cookie security, without building user management | No per-user audit trail |
+| Polling instead of websockets | 15 s delay is fine for housekeeping, and it works on serverless hosting | Not instant |
+| Claiming nights one by one instead of a transaction | Correct under races on any MongoDB tier, and simple to reason about | A crash halfway could leave orphaned nights (rare; would need a cleanup job) |
+| Kept secondary features (damage report, CSV export, print) | They were already built and cost nothing to keep | Not the focus. The core is booking → queue → ready |
+
+---
+
+## Run locally
 
 ```bash
-# 1. Clone & navigate to project directory
-cd D:\Project
-
-# 2. Install dependencies
+git clone https://github.com/RudraShrivastava14/roomwise.git
+cd roomwise
 npm install
-
-# 3. Start development server
-npm run dev
-
-# 4. Open in browser
-http://localhost:3000
+cp .env.example .env.local   # fill in MONGODB_URI, STAFF_PASSWORD, SESSION_SECRET
+npm run dev                  # http://localhost:3000 (empty DB is seeded automatically)
+npm test                     # unit tests
 ```
 
-> **Note on Port Conflict**: If port `3000` is in use, clear active processes with:
-> `Get-NetTCPConnection -LocalPort 3000 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
+Generate a session secret with `openssl rand -base64 48`.
 
----
-
-## 📌 Problem Framing & Evidence
-
-### The Problem
-Traditional hotel and resort booking systems operate strictly at the **room-category level** (e.g., *Deluxe Room*, *Premium Suite*) rather than the **individual physical room level** (e.g., *Room 403*). Even though rooms within the same category are priced identically (e.g., ₹5,000 / night), they vary dramatically in physical attributes:
-
-| Spec / Attribute | Room 401 | Room 403 |
-| :--- | :---: | :---: |
-| **Category** | Deluxe Room | Deluxe Room |
-| **Nightly Price** | ₹5,000 | ₹5,000 |
-| **View Orientation** | City View | **Pool View** |
-| **Private Balcony** | ❌ No | **✅ Yes** |
-| **Room Area** | 30 m² | **32 m²** |
-| **Soaking Bathtub** | ❌ No | **✅ Yes** |
-| **Floor Level** | 4th Floor | 4th Floor |
-
-### Why This Problem is Real & High-Impact
-1. **Guest Friction & Review Penalties**: Guests paying top rates often feel dissatisfied upon arrival when assigned a room with a city view or no balcony while identical-category rooms have pool views or balconies.
-2. **Operational Disconnect in Housekeeping**: When a specific room is reserved, front desk and housekeeping teams struggle to coordinate room readiness. Without live urgency tracking based on remaining buffer time before guest arrival, housekeepers clean rooms randomly rather than prioritizing rooms with tight check-in windows.
-
----
-
-## ⚡ Advanced Features Implemented
-
-### 1. Monetized Early Check-In Request Engine (+₹1,000)
-* Guests can add VIP Early Check-In (12:00 PM arrival instead of standard 2:00 PM) during exact-room checkout.
-* Automatically escalates that room's priority badge in the housekeeping queue to **`URGENT`**.
-* Recalculates remaining buffer time and dispatches an automated SMS alert to senior staff.
-
-### 2. Exportable CSV & Printable Shift Schedule
-* Staff can export the daily shift schedule as a CSV file (`housekeeping_dispatch_schedule.csv`) with room #, floor, priority, status, early check-in status, assigned housekeeper, and notes.
-* Integrated **Print Shift Sheet** button for supervisor handover.
-
-### 3. Automated SMS & WhatsApp Toast Dispatch Logs
-* Live simulated toast popups display when urgent rooms are dispatched or completed.
-* Expandable **SMS / WhatsApp Logs Drawer** allows staff to view real-time automated messages sent to housekeepers.
-
----
-
-## 👤 User Personas & Workflows
-
-### 1. The Hotel Guest Persona (Ananya)
-* **Goal**: Book a room with a pool view, balcony, and deep bathtub for an upcoming weekend getaway.
-* **Workflow Before RoomWise**:
-  1. Books a generic "Deluxe Room" on an OTA or hotel site.
-  2. Arrives at check-in, gets assigned Room 401 (city view, no balcony).
-  3. Complains at front desk; staff explain all Deluxe rooms were sold at the same price.
-* **Workflow After RoomWise**:
-  1. Opens interactive RoomWise Floor Plan for Floor 4.
-  2. Selects **Room 401** and **Room 403** for side-by-side comparison.
-  3. Sees clear visual highlights showing **Room 403** has **Pool View, Balcony, Bathtub, and 32 m² area**.
-  4. Optionally enables **VIP Early Check-In (+₹1,000)** for 12:00 PM arrival.
-  5. Books **Room 403** directly, guaranteeing that exact physical unit upon arrival.
-
-### 2. The Housekeeping Manager / Front Desk Persona (Ramesh)
-* **Goal**: Prepare Room 403 before the guest's scheduled arrival at 12:00 PM.
-* **Workflow Before RoomWise**:
-  1. Relies on paper printed checkout sheets or fragmented WhatsApp text messages.
-  2. Housekeeping cleans Room 404 (arriving at 4:00 PM) before Room 403 (arriving at 12:00 PM).
-  3. Guest for Room 403 arrives early and has to wait in the lobby.
-* **Workflow After RoomWise**:
-  1. RoomWise automatically calculates buffer urgency:
-     $$\text{Buffer} = \text{Next Check-in Time} - \text{Current Time} - \text{Est. Cleaning Duration}$$
-  2. Room 403 appears at the top of the **Housekeeping Priority Queue** flagged as **URGENT** with a **⚡ PAID EARLY CHECK-IN** badge.
-  3. Housekeeper receives automated dispatch SMS log, taps `Start Cleaning` $\rightarrow$ `Send for Inspection` $\rightarrow$ `Mark Ready`.
-  4. Front desk instantly sees Room 403 marked **READY** in green.
-
----
-
-## 🏗️ System Architecture & Tech Stack
-
-```mermaid
-flowchart TD
-    subgraph Guest Portal
-        FP[Interactive FloorPlan Blueprint] --> RC[Room Spec Cards & Filters]
-        RC --> RCM[Side-by-Side Comparison Matrix]
-        RCM --> BM[Exact-Room Booking Checkout + Early Check-in Switch]
-    end
-
-    subgraph Operational Engine
-        BM -->|Pushes Reserved Unit| PE[Dynamic Priority Engine]
-        PE --> HQ[Housekeeping Dispatch Queue]
-        PE --> SMS[Automated SMS/WhatsApp Toast Dispatch]
-        HQ -->|1-Tap Lifecycle Actions| ST[Dirty -> Cleaning -> Inspection -> Ready]
-        ST -->|Live Sync| FP
-        HQ --> CSV[Export Schedule CSV & Print View]
-    end
-```
-
-### Stack Choices
-* **Framework**: Next.js 14 (App Router) + TypeScript
-* **Styling & UI**: Tailwind CSS, Lucide React Icons
-* **State Management**: Reactive custom React hook state engine with LocalStorage persistence, early check-in fee rules, and notification dispatch logs.
-
----
-
-## 📁 Repository Structure
+## Project layout
 
 ```
-D:\Project\
-├── app/
-│   ├── globals.css         # Tailwind CSS & keyframe animations
-│   ├── layout.tsx          # Root HTML metadata layout
-│   └── page.tsx            # Main application connecting Guest & Staff views
-├── components/
-│   ├── Navbar.tsx          # Dual-mode navigation & demo reset
-│   ├── FloorPlan.tsx       # Interactive visual blueprint component
-│   ├── RoomCard.tsx        # Physical room unit card
-│   ├── RoomComparisonModal.tsx # Side-by-side spec comparison table
-│   ├── BookingModal.tsx    # Exact-unit reservation & Early Check-In checkout
-│   ├── GuestView.tsx       # Search filters & room explorer portal
-│   ├── StaffView.tsx       # Housekeeping priority dispatch queue
-│   └── DamageReportModal.tsx # Maintenance issue flag modal
-├── lib/
-│   ├── types.ts            # TypeScript interfaces (Room, Booking, Task, Notification)
-│   ├── mock-data.ts        # Grand Azure Resort dataset & dispatch logs
-│   └── store.ts            # Priority engine, local storage & CSV exporter
-├── package.json            # Dependencies & build scripts
-├── tailwind.config.js      # Custom theme colors
-└── README.md               # Technical documentation
+app/
+  page.tsx                 guest / staff shell
+  api/                     route handlers (rooms, bookings, auth, staff)
+components/                floor plan, room cards, comparison, booking modal, staff queue, login
+lib/
+  priority.ts              slack + priority (pure, tested)
+  booking-rules.ts         pricing + expected arrival (pure, tested)
+  validation.ts            zod schemas for every API input
+  time.ts                  IST date helpers (tested)
+  seed.ts                  demo property, times relative to now
+  store.ts                 client state hook calling the API
+  server/                  db, auth, bookings, housekeeping services
 ```
 
----
-
-## 📊 Summary of Engineering Trade-offs
-
-| Trade-off Made | Justification | Impact |
-| :--- | :--- | :--- |
-| **In-Memory + LocalStorage Persistence** | Eliminates external DB latency during demo evaluation. | 100% instant UI updates and zero configuration needed to test. |
-| **Simulated Automated Dispatch Toasts** | Demonstrates real-world SMS/WhatsApp dispatch architecture without requiring paid Twilio/WhatsApp API keys. | Realistic operational experience for review. |
-
----
-
-*RoomWise Micro-SaaS — Built with Next.js, TypeScript & Tailwind CSS.*
+Demo property photos are from Unsplash. The hotel "Grand Azure Resort" is fictional.

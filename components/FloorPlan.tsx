@@ -157,11 +157,11 @@ export const FloorPlan: React.FC<FloorPlanProps> = ({
           <div className="flex items-center space-x-4">
             <span className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
-              <span>Available for Direct Booking</span>
+              <span>Available for your dates</span>
             </span>
             <span className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
-              <span>Reserved / Housekeeping Queue</span>
+              <span>Booked for your dates</span>
             </span>
           </div>
 
