@@ -17,17 +17,18 @@ The guest's choice becomes the room staff must prepare, and the arrival time the
 |---|---|
 | **Live demo** | https://roomwise-five.vercel.app |
 | **Guest side** | No login needed. Open the demo and you're a guest. |
-| **Staff side: admin** | Click **Housekeeping Ops** and log in with username **`admin`**, password **`roomwise-staff-demo`**. The admin can also create and remove staff accounts (**Team**) and reset the demo. |
-| **Staff side: housekeeper** | Username **`ramesh`**, password **`ramesh-demo-2026`**. Can work the queue, but can't manage the team. |
+| **Staff side: admin** | Click **Housekeeping Ops** and log in with username **`admin`**, password **`roomwise-staff-demo`**. Sees every room, **assigns** dirty rooms to housekeepers, **approves** cleaned rooms (or sends them back), and manages staff accounts (**Team**). |
+| **Staff side: housekeepers** | **`ramesh`** / **`ramesh-demo-2026`** and **`sunita`** / **`sunita-demo-2026`**. Each sees only the rooms assigned to them: **Start cleaning → Cleaning done**. |
 | **Reset** | Demo data is shared by everyone who opens it. It re-seeds itself automatically when it is more than 6 hours old, so the queue always shows a realistic "this morning". Staff can also click **Reset demo**. |
 
 **A 2-minute walkthrough**
 
 1. **Pick the room.** On the guest side, keep tonight's dates. Floor 4 shows Rooms 401 and 403 at the same ₹5,000 price. Click **+ Compare** on both, then **Compare Specs Side-by-Side**. The comparison highlights that 403 has a pool view, a balcony and a bathtub.
 2. **Book it.** Book **403**, optionally with early check-in.
-3. **Find it in the staff queue.** Open **Housekeeping Ops** and log in. Room 403 now has your arrival time and appears near the top, with its slack in minutes.
-4. **Clean it.** Take it through **Start Cleaning → Send for Inspection → Mark Ready**.
-5. **Try to double-book it.** Back on the guest side, 403 now shows *Booked for your dates*. Change the dates and it becomes available again.
+3. **Assign it (admin).** Open **Housekeeping Ops** and log in as `admin`. Room 403 now has your arrival time and priority, and nobody assigned. Assign it to Ramesh.
+4. **Clean it (housekeeper).** Log out, then log in as `ramesh`. He sees only his rooms. **Start cleaning → Cleaning done.**
+5. **Approve it (admin).** Log in as `admin` again and **Approve** Room 403. The front desk gets a (simulated) "guest may enter" message. Each person's **messages** show only what was sent to them.
+6. **Try to double-book it.** Back on the guest side, 403 now shows *Booked for your dates*. Change the dates and it becomes available again.
 
 ---
 
@@ -54,7 +55,18 @@ That's why RoomWise combines both halves: exact-room booking is only safe to off
 | | Before | With RoomWise |
 |---|---|---|
 | **Guest** (Ananya, booking a weekend) | Books "Deluxe". At check-in gets a city-view room with no balcony, while the pool-view room on the same floor at the same price went to someone else. | Picks dates, compares 401 and 403 side by side, and books **403**. The confirmation names the room. |
-| **Housekeeping lead** (Ramesh, morning shift) | Works from a printed departures list or WhatsApp messages. Cleans in room-number order. Finds out a guest arrived early when the front desk calls. | Opens a queue sorted by **slack**. The room whose guest arrives soonest, relative to the work left, is at the top. One tap moves a room to the next step, and the front desk gets a (simulated) "ready" message. |
+| **Housekeeping supervisor** (admin) | Works from a printed departures list. Assigns rooms by shouting down the corridor or by WhatsApp. Has to walk the floors to find out which rooms are finished. | Sees every room sorted by **slack**, with unassigned rooms flagged. Assigns each one from a dropdown, gets a message when a room is done, then **approves** it or **sends it back**. |
+| **Housekeeper** (Ramesh) | Gets rooms in room-number order. Doesn't know which guest arrives first. | Sees only *their* rooms, most urgent first. Two buttons: **Start cleaning** and **Cleaning done**. |
+
+**Separation of duties.** The server enforces who can make each status change, not just the UI:
+
+| Change | Who |
+|---|---|
+| Assign / reassign (only while *Needs cleaning*) | Admin |
+| Needs cleaning → Cleaning → Cleaned | The assigned housekeeper only |
+| Cleaned → Ready (approve) or → Cleaning (send back) | Admin only |
+
+Each simulated WhatsApp message goes to an inbox: `admin`, `frontdesk`, or a housekeeper's username. Housekeepers see only their own messages, and the admin sees all of them.
 
 **How the priority is computed** (a pure function, see [`lib/priority.ts`](lib/priority.ts)):
 
@@ -102,9 +114,9 @@ MongoDB Atlas   rooms · bookings · room_nights · tasks · notifications
 **Auth.** The guest side is public, because guests browse and book without an account. The staff side has two roles:
 
 - **Admin.** The admin's password comes from an environment variable, so a new deployment can never be locked out. Only the admin can create or remove staff accounts and reset the demo.
-- **Housekeepers.** The admin creates their accounts and hands over the username and password in person. Staff don't sign themselves up and there's no email step, which matches how small hotels onboard staff. Passwords are stored as **scrypt hashes with a per-user salt**, and the API never returns them.
+- **Housekeepers.** The admin creates their accounts and hands over the username and password in person. The admin plans and inspects but never cleans, so the API refuses to let the admin start or finish a clean, and refuses to let a housekeeper touch rooms that aren't assigned to them. Staff don't sign themselves up and there's no email step, which matches how small hotels onboard staff. Passwords are stored as **scrypt hashes with a per-user salt**, and the API never returns them.
 
-Logging in issues an **HMAC-signed, httpOnly, SameSite cookie** that holds the username and role and expires after 12 hours (one shift). Housekeeper sessions are re-checked against the database on each request, so removing someone locks them out immediately. Whoever taps *Start Cleaning* is recorded on the room. Secrets live in environment variables, never in git (see `.env.example`).
+Logging in issues an **HMAC-signed, httpOnly, SameSite cookie** that holds the username and role and expires after 12 hours (one shift). Housekeeper sessions are re-checked against the database on each request, so removing someone locks them out immediately. Secrets live in environment variables, never in git (see `.env.example`).
 
 **Failure handling.** Every route goes through one wrapper that turns errors into JSON (`400/401/404/409/503`). The UI shows these inline, with retry buttons and loading/empty states. If the database is unreachable, users see "Database is unavailable" rather than a crashed page. The staff view polls every 15 s. If a refresh fails, it keeps showing the last data and says so.
 

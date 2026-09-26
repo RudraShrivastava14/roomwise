@@ -91,24 +91,29 @@ async function refreshStaleDemo(db: Db) {
   if (claimed) await seedDatabase(db);
 }
 
-/** A non-admin login reviewers can try. Created once; never overwritten by a reset. */
-export const DEMO_STAFF = { username: 'ramesh', displayName: 'Ramesh K.', password: 'ramesh-demo-2026' };
+/** Non-admin logins reviewers can try. Created once; never overwritten by a reset. */
+export const DEMO_STAFF = [
+  { username: 'ramesh', displayName: 'Ramesh K.', password: 'ramesh-demo-2026' },
+  { username: 'sunita', displayName: 'Sunita P.', password: 'sunita-demo-2026' },
+];
 
 async function ensureDemoStaff(db: Db) {
   const users = db.collection<StaffUserDoc>('staff_users');
-  if (await users.countDocuments({ _id: DEMO_STAFF.username }, { limit: 1 })) return;
-  await users.updateOne(
-    { _id: DEMO_STAFF.username },
-    {
-      $setOnInsert: {
-        displayName: DEMO_STAFF.displayName,
-        passwordHash: await hashPassword(DEMO_STAFF.password),
-        createdAt: new Date().toISOString(),
-        createdBy: 'admin',
+  for (const demo of DEMO_STAFF) {
+    if (await users.countDocuments({ _id: demo.username }, { limit: 1 })) continue;
+    await users.updateOne(
+      { _id: demo.username },
+      {
+        $setOnInsert: {
+          displayName: demo.displayName,
+          passwordHash: await hashPassword(demo.password),
+          createdAt: new Date().toISOString(),
+          createdBy: 'admin',
+        },
       },
-    },
-    { upsert: true }
-  );
+      { upsert: true }
+    );
+  }
 }
 
 export async function seedDatabase(db: Db) {

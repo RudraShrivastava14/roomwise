@@ -36,6 +36,7 @@ export default function Home() {
         onLoadTeam={store.loadTeam}
         onAddStaff={store.addStaffMember}
         onRemoveStaff={store.removeStaffMember}
+        onAssign={store.assignTask}
         data={store.staffData}
         refreshError={store.staffError}
         latestToast={store.latestToast}

@@ -111,6 +111,7 @@ async function attachArrivalToTurnover(booking: Booking, room: RoomDoc, now: Dat
       checkoutAt: null,
       ...arrivalFields,
       cleaningEstMinutes: 35,
+      assignedTo: null,
       assignedStaff: null,
       notes: null,
       damageReport: null,
@@ -119,10 +120,13 @@ async function attachArrivalToTurnover(booking: Booking, room: RoomDoc, now: Dat
     await tasks.insertOne(toDoc(task));
   }
 
+  // The admin plans the day; the assignee (if any) also needs to know the deadline moved.
+  const assignee = existing?.assignedTo ?? null;
   await logNotification(db, {
-    type: 'SMS',
-    recipient: existing?.assignedStaff ?? 'Housekeeping desk',
-    message: `Room ${room.roomNumber}: ${booking.guestName} booked this exact room, arriving ${new Intl.DateTimeFormat('en-IN', {
+    type: 'WHATSAPP',
+    to: assignee ?? 'admin',
+    recipient: existing?.assignedStaff ?? 'Admin',
+    message: `Room ${room.roomNumber}${assignee ? '' : ' (not assigned yet)'}: ${booking.guestName} booked this exact room, arriving ${new Intl.DateTimeFormat('en-IN', {
       timeZone: 'Asia/Kolkata',
       dateStyle: 'medium',
       timeStyle: 'short',

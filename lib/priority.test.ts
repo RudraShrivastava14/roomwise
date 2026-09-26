@@ -18,6 +18,7 @@ function task(overrides: Partial<HousekeepingTask>): HousekeepingTask {
     nextGuestName: 'Guest',
     isEarlyCheckIn: false,
     cleaningEstMinutes: 35,
+    assignedTo: null,
     assignedStaff: null,
     notes: null,
     damageReport: null,

@@ -8,6 +8,6 @@ export const PATCH = handler(async (req: Request, { params }: { params: { id: st
   const staff = await requireStaff();
   const parsed = statusUpdateSchema.safeParse(await readJson(req));
   if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error));
-  await advanceTask(params.id, parsed.data.status, staff.displayName);
+  await advanceTask(params.id, parsed.data.status, staff);
   return NextResponse.json({ ok: true });
 });

@@ -161,6 +161,17 @@ export function useRoomWiseStore() {
     await loadTeam();
   };
 
+  const assignTask = async (taskId: string, username: string) => {
+    try {
+      await api(`/api/staff/tasks/${encodeURIComponent(taskId)}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ username }),
+      });
+    } finally {
+      await loadStaff();
+    }
+  };
+
   const removeStaffMember = async (username: string) => {
     await api(`/api/staff/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
     await loadTeam();
@@ -238,6 +249,7 @@ export function useRoomWiseStore() {
     loadTeam,
     addStaffMember,
     removeStaffMember,
+    assignTask,
     staffData,
     staffError,
     reloadStaff: loadStaff,

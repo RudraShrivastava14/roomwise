@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CleaningStatus, PriorityLevel, NotificationLog, QueueItem, StaffMember, StaffSession } from '../lib/types';
 import { StaffTeamPanel } from './StaffTeamPanel';
 import { StaffData } from '../lib/store';
@@ -37,6 +37,7 @@ interface StaffViewProps {
   onLoadTeam: () => Promise<void>;
   onAddStaff: (member: { username: string; displayName: string; password: string }) => Promise<void>;
   onRemoveStaff: (username: string) => Promise<void>;
+  onAssign: (taskId: string, username: string) => Promise<void>;
   data: StaffData;
   refreshError: string | null;
   latestToast: NotificationLog | null;
@@ -46,6 +47,13 @@ interface StaffViewProps {
   onResetDemo: () => Promise<void>;
   onLogout: () => void;
 }
+
+const STATUS_LABEL: Record<CleaningStatus, string> = {
+  DIRTY: 'Needs cleaning',
+  CLEANING: 'Cleaning',
+  INSPECTION: 'Cleaned — awaiting check',
+  READY: 'Ready',
+};
 
 /** Human wording for the computed slack before the next guest arrives. */
 function describeBuffer(task: QueueItem): { text: string; className: string } {
@@ -61,6 +69,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
   onLoadTeam,
   onAddStaff,
   onRemoveStaff,
+  onAssign,
   data,
   refreshError,
   latestToast,
@@ -71,12 +80,27 @@ export const StaffView: React.FC<StaffViewProps> = ({
   onLogout,
 }) => {
   const { rooms, queue: tasks, notifications } = data;
+  const isAdmin = staff.role === 'admin';
   const [selectedTaskForDamage, setSelectedTaskForDamage] = useState<QueueItem | null>(null);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
-  const isAdmin = staff.role === 'admin';
+  const [assignChoice, setAssignChoice] = useState<Record<string, string>>({});
+
+  const assign = async (task: QueueItem) => {
+    const username = assignChoice[task.id] ?? task.assignedTo ?? team[0]?.username;
+    if (!username) return setActionError('Create a staff account first (Team button).');
+    setBusyTaskId(task.id);
+    setActionError(null);
+    try {
+      await onAssign(task.id, username);
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setBusyTaskId(null);
+    }
+  };
   const [filterFloor, setFilterFloor] = useState<number | 'ALL'>('ALL');
   const [filterStatus, setFilterStatus] = useState<CleaningStatus | 'ALL'>('ALL');
   const [showNotificationDrawer, setShowNotificationDrawer] = useState(false);
@@ -89,7 +113,12 @@ export const StaffView: React.FC<StaffViewProps> = ({
   const openTasks = tasks.filter(t => t.status !== 'READY');
   const urgentTasks = openTasks.filter(t => t.priority === 'URGENT').length;
   const lateTasks = openTasks.filter(t => t.bufferMinutes !== null && t.bufferMinutes < 0).length;
-  const earlyCheckInTasks = openTasks.filter(t => t.isEarlyCheckIn).length;
+  const unassignedTasks = openTasks.filter(t => t.status === 'DIRTY' && !t.assignedTo).length;
+
+  // The admin needs the team list for the assign dropdown.
+  useEffect(() => {
+    if (isAdmin) onLoadTeam().catch(() => undefined);
+  }, [isAdmin, onLoadTeam]);
   const floors = Array.from(new Set(rooms.map(r => r.floor))).sort((a, b) => b - a);
 
   // The server already sorted by least slack; filtering keeps that order.
@@ -188,11 +217,14 @@ export const StaffView: React.FC<StaffViewProps> = ({
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-2">
-              Housekeeping Priority Dispatch Queue
+              {isAdmin ? 'Room Turnover Board' : 'My Assigned Rooms'}
             </h1>
             <p className="text-xs text-slate-400 mt-1">
-              Ordered by slack: time until the next guest arrives, minus waiting for checkout, minus cleaning + inspection left.
-              Under {URGENT_BUFFER_MAX} min is URGENT, under {HIGH_BUFFER_MAX} min is HIGH. Updates every 15 seconds.
+              {isAdmin
+                ? 'Assign rooms that need cleaning, then inspect and approve them once the housekeeper marks them done.'
+                : 'Start each room, mark it done when finished — the admin inspects and approves it.'}{' '}
+              Ordered by slack (time until the next guest arrives minus work left): under {URGENT_BUFFER_MAX} min is URGENT,
+              under {HIGH_BUFFER_MAX} min is HIGH. Updates every 15 seconds.
             </p>
           </div>
 
@@ -203,9 +235,10 @@ export const StaffView: React.FC<StaffViewProps> = ({
               className="relative bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3.5 py-2.5 rounded-xl border border-slate-700 font-semibold transition-colors flex items-center space-x-1.5"
             >
               <Bell className="w-3.5 h-3.5 text-amber-400" />
-              <span>SMS Logs ({notifications.length})</span>
+              <span>{isAdmin ? 'All messages' : 'My messages'} ({notifications.length})</span>
             </button>
 
+            {isAdmin && (
             <button
               onClick={onExportCSV}
               className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3.5 py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-1.5"
@@ -213,7 +246,9 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <Download className="w-3.5 h-3.5" />
               <span>Export CSV</span>
             </button>
+            )}
 
+            {isAdmin && (
             <button
               onClick={handlePrint}
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2.5 rounded-xl border border-slate-700 font-semibold transition-colors flex items-center space-x-1.5"
@@ -221,6 +256,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               <Printer className="w-3.5 h-3.5" />
               <span>Print Sheet</span>
             </button>
+            )}
 
             {isAdmin && (
               <button
@@ -255,6 +291,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
         </div>
 
         {/* Operational KPI Counters */}
+        {isAdmin && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-slate-800/80">
           <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80">
             <div className="text-xs text-slate-400">Total Room Readiness</div>
@@ -275,11 +312,12 @@ export const StaffView: React.FC<StaffViewProps> = ({
           </div>
 
           <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80">
-            <div className="text-xs text-slate-400">Early Check-Ins Pending</div>
-            <div className="text-2xl font-black text-amber-400 mt-1">{earlyCheckInTasks}</div>
-            <div className="text-[10px] text-amber-300/80 font-medium">Guests arriving at 12:00 PM</div>
+            <div className="text-xs text-slate-400">Needs Assigning</div>
+            <div className="text-2xl font-black text-amber-400 mt-1">{unassignedTasks}</div>
+            <div className="text-[10px] text-amber-300/80 font-medium">Dirty rooms with nobody on them</div>
           </div>
         </div>
+        )}
       </div>
 
       {isAdmin && showTeam && (
@@ -292,7 +330,10 @@ export const StaffView: React.FC<StaffViewProps> = ({
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div className="flex items-center space-x-2">
               <Bell className="w-4 h-4 text-amber-400" />
-              <h3 className="text-sm font-bold text-white">Dispatch Log <span className="text-slate-400 font-normal">(simulated — no real SMS is sent)</span></h3>
+              <h3 className="text-sm font-bold text-white">
+                {isAdmin ? 'All WhatsApp messages' : 'My WhatsApp messages'}{' '}
+                <span className="text-slate-400 font-normal">(simulated — nothing is really sent)</span>
+              </h3>
             </div>
             <button
               onClick={() => setShowNotificationDrawer(false)}
@@ -362,7 +403,9 @@ export const StaffView: React.FC<StaffViewProps> = ({
         {/* Task Cards Grid / List */}
         <div className="space-y-4">
           {filteredTasks.length === 0 && (
-            <p className="text-center text-xs text-slate-400 py-10">No rooms match these filters.</p>
+            <p className="text-center text-xs text-slate-400 py-10">
+              {!isAdmin && tasks.length === 0 ? 'No rooms are assigned to you right now.' : 'No rooms match these filters.'}
+            </p>
           )}
           {filteredTasks.map(task => (
             <div
@@ -444,52 +487,114 @@ export const StaffView: React.FC<StaffViewProps> = ({
                     task.status
                   )}`}
                 >
-                  {task.status}
+                  {STATUS_LABEL[task.status]}
                 </span>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  Assigned: <strong className="text-slate-200">{task.assignedStaff || 'Unassigned'}</strong>
-                </span>
+                {isAdmin && (
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    Assigned:{' '}
+                    {task.assignedStaff ? (
+                      <strong className="text-slate-200">{task.assignedStaff}</strong>
+                    ) : (
+                      <strong className="text-amber-300">nobody yet</strong>
+                    )}
+                  </span>
+                )}
               </div>
 
               {/* Right Column: One-Tap Action Buttons */}
               <div className="flex flex-wrap items-center gap-2">
-                {task.status === 'DIRTY' && (
-                  <button
-                    onClick={() => advance(task, 'CLEANING')}
-                    disabled={busyTaskId === task.id}
-                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-1.5"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Start Cleaning</span>
-                  </button>
-                )}
+                {isAdmin ? (
+                  <>
+                    {task.status === 'DIRTY' && (
+                      <div className="flex items-center gap-2">
+                        <select
+                          aria-label={`Assign room ${task.roomNumber}`}
+                          value={assignChoice[task.id] ?? task.assignedTo ?? ''}
+                          onChange={e => setAssignChoice(c => ({ ...c, [task.id]: e.target.value }))}
+                          className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl px-2.5 py-2.5 focus:outline-none"
+                        >
+                          <option value="" disabled>
+                            Choose housekeeper…
+                          </option>
+                          {team.map(m => (
+                            <option key={m.username} value={m.username}>
+                              {m.displayName}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => assign(task)}
+                          disabled={busyTaskId === task.id || !(assignChoice[task.id] ?? task.assignedTo)}
+                          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all flex items-center space-x-1.5"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>{task.assignedTo ? 'Reassign' : 'Assign'}</span>
+                        </button>
+                      </div>
+                    )}
 
-                {task.status === 'CLEANING' && (
-                  <button
-                    onClick={() => advance(task, 'INSPECTION')}
-                    disabled={busyTaskId === task.id}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center space-x-1.5"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>Send for Inspection</span>
-                  </button>
-                )}
+                    {task.status === 'CLEANING' && (
+                      <span className="text-xs text-amber-300 bg-amber-500/10 px-3 py-2 rounded-xl border border-amber-500/30">
+                        {task.assignedStaff} is cleaning
+                      </span>
+                    )}
 
-                {task.status === 'INSPECTION' && (
-                  <button
-                    onClick={() => advance(task, 'READY')}
-                    disabled={busyTaskId === task.id}
-                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-1.5"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Mark Ready for Guest</span>
-                  </button>
+                    {task.status === 'INSPECTION' && (
+                      <>
+                        <button
+                          onClick={() => advance(task, 'READY')}
+                          disabled={busyTaskId === task.id}
+                          className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-1.5"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Approve — guest can enter</span>
+                        </button>
+                        <button
+                          onClick={() => advance(task, 'CLEANING')}
+                          disabled={busyTaskId === task.id}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs px-3 py-2.5 rounded-xl border border-slate-700"
+                        >
+                          Send back
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {task.status === 'DIRTY' && (
+                      <button
+                        onClick={() => advance(task, 'CLEANING')}
+                        disabled={busyTaskId === task.id}
+                        className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-1.5"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Start cleaning</span>
+                      </button>
+                    )}
+
+                    {task.status === 'CLEANING' && (
+                      <button
+                        onClick={() => advance(task, 'INSPECTION')}
+                        disabled={busyTaskId === task.id}
+                        className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center space-x-1.5"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Cleaning done</span>
+                      </button>
+                    )}
+
+                    {task.status === 'INSPECTION' && (
+                      <span className="text-xs text-blue-300 bg-blue-500/10 px-3 py-2 rounded-xl border border-blue-500/30">
+                        Waiting for admin inspection
+                      </span>
+                    )}
+                  </>
                 )}
 
                 {task.status === 'READY' && (
                   <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 px-3 py-2 rounded-xl border border-emerald-500/30 flex items-center space-x-1">
                     <Check className="w-3.5 h-3.5" />
-                    <span>Ready for Check-In</span>
+                    <span>Ready for check-in</span>
                   </span>
                 )}
 

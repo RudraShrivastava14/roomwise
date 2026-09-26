@@ -160,7 +160,8 @@ interface TurnoverSeed {
   guest: string | null;
   isEarlyCheckIn: boolean;
   cleaningEstMinutes: number;
-  assignedStaff: string | null;
+  /** Demo housekeeper username (see DEMO_STAFF in lib/server/db.ts), or null = admin must assign. */
+  assignedTo: 'ramesh' | 'sunita' | null;
   notes: string | null;
   startedMinAgo?: number;
 }
@@ -173,26 +174,28 @@ const TURNOVERS: TurnoverSeed[] = [
   {
     // Previous guest hasn't left yet and the next one paid for early check-in: tightest window.
     roomId: 'room_301', status: 'DIRTY', checkoutInMin: 20, arrivalInMin: 75, guest: 'Priya Nair',
-    isEarlyCheckIn: true, cleaningEstMinutes: 30, assignedStaff: 'Sunita P.', notes: 'Due out soon. Early check-in guest.',
+    isEarlyCheckIn: true, cleaningEstMinutes: 30, assignedTo: null, notes: 'Due out soon. Early check-in guest — needs someone assigned.',
   },
   {
     roomId: 'room_302', status: 'INSPECTION', checkoutInMin: -150, arrivalInMin: 45, guest: 'Arjun Mehta',
-    isEarlyCheckIn: false, cleaningEstMinutes: 30, assignedStaff: 'Ramesh K.', notes: 'Cleaned. Awaiting supervisor inspection.',
+    isEarlyCheckIn: false, cleaningEstMinutes: 30, assignedTo: 'ramesh', notes: null,
   },
   {
     roomId: 'room_402', status: 'DIRTY', checkoutInMin: -90, arrivalInMin: 100, guest: 'Vikram Rao',
-    isEarlyCheckIn: false, cleaningEstMinutes: 40, assignedStaff: 'Ramesh K.', notes: null,
+    isEarlyCheckIn: false, cleaningEstMinutes: 40, assignedTo: 'ramesh', notes: null,
   },
   {
     roomId: 'room_404', status: 'CLEANING', checkoutInMin: -120, arrivalInMin: 240, guest: 'Meera Iyer',
-    isEarlyCheckIn: false, cleaningEstMinutes: 50, assignedStaff: 'Anil M.', notes: 'Suite deep clean.', startedMinAgo: 15,
+    isEarlyCheckIn: false, cleaningEstMinutes: 50, assignedTo: 'sunita', notes: 'Suite deep clean.', startedMinAgo: 15,
   },
   {
     // Vacated but not rebooked yet — the room a demo guest will usually pick.
     roomId: 'room_403', status: 'DIRTY', checkoutInMin: -30, arrivalInMin: null, guest: null,
-    isEarlyCheckIn: false, cleaningEstMinutes: 35, assignedStaff: null, notes: null,
+    isEarlyCheckIn: false, cleaningEstMinutes: 35, assignedTo: null, notes: null,
   },
 ];
+
+const DEMO_STAFF_NAMES = { ramesh: 'Ramesh K.', sunita: 'Sunita P.' } as const;
 
 export interface SeedData {
   rooms: RoomDoc[];
@@ -221,7 +224,8 @@ export function buildSeed(now: Date = new Date()): SeedData {
       nextGuestName: t.guest,
       isEarlyCheckIn: t.isEarlyCheckIn,
       cleaningEstMinutes: t.cleaningEstMinutes,
-      assignedStaff: t.assignedStaff,
+      assignedTo: t.assignedTo,
+      assignedStaff: t.assignedTo ? DEMO_STAFF_NAMES[t.assignedTo] : null,
       notes: t.notes,
       damageReport: null,
       updatedAt: iso(-(t.startedMinAgo ?? 0)),
@@ -259,10 +263,27 @@ export function buildSeed(now: Date = new Date()): SeedData {
   const notifications: NotificationLog[] = [
     {
       id: 'notif_seed_1',
-      type: 'SMS',
-      recipient: 'Sunita P.',
-      message: 'Room 301: guest due out soon, next guest has paid early check-in. Clean as soon as it is vacated.',
-      timestamp: iso(-10),
+      type: 'WHATSAPP',
+      to: 'ramesh',
+      recipient: 'Ramesh K.',
+      message: 'Room 402 assigned to you by Admin. Next guest arrives soon.',
+      timestamp: iso(-40),
+    },
+    {
+      id: 'notif_seed_2',
+      type: 'WHATSAPP',
+      to: 'admin',
+      recipient: 'Admin',
+      message: 'Room 302: Ramesh K. finished cleaning. Waiting for your inspection.',
+      timestamp: iso(-12),
+    },
+    {
+      id: 'notif_seed_3',
+      type: 'WHATSAPP',
+      to: 'admin',
+      recipient: 'Admin',
+      message: 'Room 301: next guest has paid early check-in and nobody is assigned yet.',
+      timestamp: iso(-5),
     },
   ];
 

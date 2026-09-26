@@ -56,6 +56,10 @@ export function firstIssue(err: z.ZodError): string {
   return err.issues[0]?.message ?? 'Invalid input';
 }
 
+export const assignSchema = z.object({
+  username: z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,32}$/, 'Pick a staff member'),
+});
+
 export const loginSchema = z.object({
   username: z.string().trim().min(1, 'Enter your username').max(32),
   password: z.string().min(1, 'Enter your password').max(200),

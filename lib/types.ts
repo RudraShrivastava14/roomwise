@@ -71,6 +71,9 @@ export interface HousekeepingTask {
   nextGuestName: string | null;
   isEarlyCheckIn: boolean;
   cleaningEstMinutes: number;
+  /** Username of the housekeeper the admin assigned, or null if nobody is assigned yet. */
+  assignedTo: string | null;
+  /** Display name of the assignee, kept alongside so the UI doesn't need a join. */
   assignedStaff: string | null;
   notes: string | null;
   damageReport: DamageReport | null;
@@ -86,6 +89,8 @@ export interface QueueItem extends HousekeepingTask {
 export interface NotificationLog {
   id: string;
   type: 'SMS' | 'WHATSAPP';
+  /** Whose inbox this lands in: 'admin', 'frontdesk', or a housekeeper's username. */
+  to: string;
   recipient: string;
   message: string;
   timestamp: string;

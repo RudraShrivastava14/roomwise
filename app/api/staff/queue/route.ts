@@ -6,6 +6,6 @@ export const dynamic = 'force-dynamic';
 
 /** GET /api/staff/queue — rooms, prioritized turnover queue, and dispatch log. */
 export const GET = handler(async () => {
-  await requireStaff();
-  return NextResponse.json(await staffSnapshot());
+  const staff = await requireStaff();
+  return NextResponse.json(await staffSnapshot(staff));
 });
